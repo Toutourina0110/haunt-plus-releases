@@ -42,4 +42,4 @@ npm ci
 npm run build
 ```
 
-`npm ci` installs the exact versions listed in `package-lock.json`. The JavaScript it builds in `dist/` is byte for byte the same as the JavaScript inside the installer of the same version.
+`npm ci` installs the exact versions listed in `package-lock.json`. The bundled JavaScript it builds in `dist/` (main process, preloads and pages) is byte for byte the same as in the installer of the same version. The userscript, CSS and HTML files differ only by their removed comments.

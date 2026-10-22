@@ -11,7 +11,6 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p .",
     "start": "node scripts/build.mjs --dev && electron .",
-    "lab": "node lab/build.mjs && electron dist-lab/main.js",
     "dist": "npm run typecheck && npm run build && electron-builder --win --publish never",
     "release": "npm run typecheck && npm run build && electron-builder --win --publish always"
   },
