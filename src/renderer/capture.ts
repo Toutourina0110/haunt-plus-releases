@@ -1,6 +1,6 @@
 import { CH } from '../shared/channels';
 import type { CaptureInit, CaptureRect } from '../shared/types';
-import { desk } from './common';
+import { applyFont, desk } from './common';
 
 const shot = document.getElementById('shot') as HTMLImageElement;
 const dim = document.getElementById('dim')!;
@@ -71,6 +71,7 @@ document.addEventListener('contextmenu', (event) => {
 async function main(): Promise<void> {
   const init = await desk.invoke<CaptureInit>(CH.captureInit);
   hint.textContent = init.hint;
+  applyFont(init.font);
   shot.src = init.image;
 }
 

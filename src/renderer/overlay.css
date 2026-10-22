@@ -36,7 +36,7 @@ body {
 
 .splash-name {
   margin: 0;
-  font-family: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-family: var(--app-font, 'Average Sans'), 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
   font-size: 15px;
   font-weight: 600;
   color: var(--muted);
@@ -192,7 +192,7 @@ body {
 
 .sp-head h2 {
   margin: 0;
-  font-family: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-family: var(--app-font, 'Average Sans'), 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
   font-size: 20px;
   font-weight: 600;
 }
@@ -334,6 +334,16 @@ body {
   font-size: 13px;
 }
 
+.sp-bad {
+  display: block;
+  margin-top: 6px;
+  color: var(--danger);
+}
+
+.sp-select:invalid {
+  border-color: var(--danger);
+}
+
 .sp-select option {
   background: var(--surface);
   color: var(--fg);
@@ -427,4 +437,13 @@ kbd {
   display: block;
   font-weight: 600;
   color: var(--fg);
+}
+
+.tour {
+  --tour-surface: var(--surface);
+  --tour-fg: var(--fg);
+  --tour-muted: var(--muted);
+  --tour-line: var(--line);
+  --tour-accent: var(--accent);
+  --tour-on-accent: var(--on-accent);
 }

@@ -39,6 +39,10 @@ export const CH = {
   shortcutStatus: 'shortcut:status',
   shortcutPause: 'shortcut:pause',
 
+  tourRequest: 'tour:request',
+  tourStart: 'tour:start',
+  tourDone: 'tour:done',
+
   captureInit: 'capture:init',
   captureSelect: 'capture:select',
 
@@ -69,6 +73,8 @@ export const UI_SEND = [
   CH.imagehostCapture,
   CH.captureSelect,
   CH.shortcutPause,
+  CH.tourRequest,
+  CH.tourDone,
 ] as const;
 
 export const UI_LISTEN = [
@@ -88,6 +94,7 @@ export const UI_LISTEN = [
   CH.theme,
   CH.imagehostUploaded,
   CH.shortcutStatus,
+  CH.tourStart,
 ] as const;
 
 export const UI_INVOKE = [

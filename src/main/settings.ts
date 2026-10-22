@@ -12,10 +12,13 @@ const DEFAULTS: Settings = {
   animations: 'full',
   transitionSpeed: 'medium',
   language: 'auto',
+  font: '',
   imagehostLink: 'page',
   imagehostSaveLocal: false,
   imagehostShortcuts: true,
   ...DEFAULT_SHORTCUTS,
+  tourAppSeen: false,
+  tourImagesSeen: false,
   externalLinks: 'popup',
   hauntPlus: true,
   globalShortcut: true,
@@ -43,6 +46,8 @@ const BOOLEANS: Array<keyof Settings> = [
   'maximized',
   'imagehostSaveLocal',
   'imagehostShortcuts',
+  'tourAppSeen',
+  'tourImagesSeen',
 ];
 
 function isBounds(v: unknown): v is WindowBounds {
@@ -65,6 +70,8 @@ function clean(input: unknown, allowed: readonly (keyof Settings)[]): Partial<Se
       if (typeof value === 'boolean') out[key] = value;
     } else if (key === 'shortcutArea' || key === 'shortcutScreen' || key === 'shortcutClipboard') {
       if (isValidShortcut(value)) out[key] = value;
+    } else if (key === 'font') {
+      if (typeof value === 'string' && /^[A-Za-z0-9 ]{0,60}$/.test(value)) out[key] = value.trim().replace(/ +/g, ' ');
     } else if (key === 'bounds') {
       if (value === null || isBounds(value)) out[key] = value;
     }

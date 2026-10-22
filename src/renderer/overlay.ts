@@ -11,11 +11,13 @@ import type {
   SettingsOpenPayload,
   SettingsPatch,
   TabId,
+  TourStartPayload,
   TransitionPayload,
   UiInit,
   UpdateStatus,
 } from '../shared/types';
 import {
+  applyFont,
   applyPalette,
   desk,
   ICONS,
@@ -25,9 +27,11 @@ import {
   prefersReducedMotion,
   setLocale,
   siteName,
+  tourLabels,
   tr,
 } from './common';
 import { loadMark, TileMorph, type Mark, type Shot } from './tiles';
+import { rectOf, refreshTour, runTour, tourActive, type TourStep } from './tour';
 
 const splash = document.getElementById('splash')!;
 const fx = document.getElementById('fx') as HTMLCanvasElement;
@@ -39,6 +43,7 @@ const panel = document.getElementById('settings-panel')!;
 let dark = true;
 let site: TabId = 'haunt';
 let version = '';
+let fontMissing = false;
 let settings: Settings | null = null;
 let update: UpdateStatus = { state: 'idle' };
 let settingsOpen = false;
@@ -243,6 +248,47 @@ function hideMenu(): void {
     .catch(() => {});
 }
 
+let tourData: TourStartPayload | null = null;
+
+function showMenuNow(): void {
+  if (!tourData) return;
+  setSite(tourData.active);
+  for (const button of menu.querySelectorAll<HTMLButtonElement>('.menu-btn')) {
+    button.setAttribute('aria-current', String(button.dataset.act === tourData.active));
+    if (button.dataset.act === 'hauntplus') button.hidden = !tourData.hauntPlus;
+  }
+  menuAnim?.cancel();
+  menu.hidden = false;
+}
+
+function startWindowTour(): void {
+  menu.hidden = true;
+  splash.hidden = true;
+  const bar = (key: keyof TourStartPayload['rects']) => ({
+    available: () => !!tourData?.rects[key],
+    target: () => tourData?.rects[key] ?? null,
+    bounds: () => {
+      const t = tourData?.titlebar;
+      return t ? { x: t.x, y: 0, w: t.w, h: window.innerHeight } : null;
+    },
+  });
+  const inMenu = { enter: showMenuNow, leave: () => (menu.hidden = true) };
+  const steps: TourStep[] = [
+    { title: tr('tw0T'), text: tr('tw0') },
+    { title: tr('tw1T'), text: tr('tw1'), ...bar('switch') },
+    { title: tr('tw2T'), text: tr('tw2'), ...bar('nav') },
+    { title: tr('tw3T'), text: tr('tw3'), ...bar('copy') },
+    { title: tr('tw4T'), text: tr('tw4'), ...inMenu, target: () => rectOf(menu) },
+    { title: tr('tw5T'), text: tr('tw5'), ...inMenu, target: () => rectOf(menu.querySelector('[data-act="settings"]')) },
+    { title: tr('tw6T'), text: tr('tw6'), ...bar('help') },
+    { title: tr('tw7T'), text: tr('tw7') },
+  ];
+  void runTour(steps, tourLabels()).then(() => {
+    menu.hidden = true;
+    desk.send(CH.tourDone);
+  });
+}
+
 function textBlock(label: StringKey, hint?: StringKey): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'sp-text';
@@ -416,6 +462,8 @@ function buildSettings(): void {
       'appearance',
       labelRow('language', 'languageHint'),
       languagePicker(),
+      labelRow('font', 'fontHint'),
+      fontField(),
     ),
     group('hauntPlus', toggleRow('hauntPlus', 'hauntPlusToggle', 'hauntPlusHint'), hauntPlusActions()),
     group('shortcuts', toggleRow('globalShortcut', 'globalShortcut', 'globalShortcutHint'), shortcutList()),
@@ -436,6 +484,30 @@ function languagePicker(): HTMLElement {
   select.append(new Option(tr('langAuto'), 'auto'), ...LOCALES.map((l) => new Option(LANGUAGE_NAMES[l], l)));
   select.addEventListener('change', () => change({ language: select.value as Settings['language'] }));
   return select;
+}
+
+function fontField(): HTMLElement {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'sp-select';
+  input.id = 'font';
+  input.placeholder = 'Average Sans';
+  input.maxLength = 60;
+  input.pattern = '[A-Za-z0-9 ]*';
+  input.spellcheck = false;
+  input.setAttribute('aria-label', tr('font'));
+  input.addEventListener('change', () => {
+    const name = input.value.trim().replace(/ +/g, ' ');
+    if (input.checkValidity() && name !== settings?.font) change({ font: name });
+  });
+  const missing = document.createElement('span');
+  missing.className = 'sp-hint sp-bad';
+  missing.id = 'font-missing';
+  missing.textContent = tr('fontMissing');
+  missing.hidden = true;
+  const wrap = document.createElement('div');
+  wrap.append(input, missing);
+  return wrap;
 }
 
 function labelRow(label: StringKey, hint: StringKey): HTMLElement {
@@ -564,6 +636,10 @@ function renderSettings(): void {
   }
   const language = document.getElementById('language') as HTMLSelectElement | null;
   if (language) language.value = settings.language;
+  const font = document.getElementById('font') as HTMLInputElement | null;
+  if (font && document.activeElement !== font) font.value = settings.font;
+  const missing = document.getElementById('font-missing');
+  if (missing) missing.hidden = !fontMissing;
   const open = document.getElementById('hauntplus-open') as HTMLButtonElement | null;
   if (open) open.disabled = !settings.hauntPlus;
   renderUpdate();
@@ -615,6 +691,11 @@ async function closeSettings(animated: boolean, notify = true): Promise<void> {
 async function main(): Promise<void> {
   const init = await desk.invoke<UiInit>(CH.init);
   setLocale(init.locale);
+  void applyFont(init.settings.font).then((ok) => {
+    fontMissing = !ok;
+    const missing = document.getElementById('font-missing');
+    if (missing) missing.hidden = ok;
+  });
   dark = init.dark;
   version = init.version;
   settings = init.settings;
@@ -635,6 +716,11 @@ async function main(): Promise<void> {
   for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, abortTransition);
   desk.on<{ active: TabId; hauntPlus: boolean }>(CH.menuShow, showMenu);
   desk.on(CH.menuHide, hideMenu);
+  desk.on<TourStartPayload>(CH.tourStart, (data) => {
+    tourData = data;
+    if (tourActive()) refreshTour();
+    else startWindowTour();
+  });
   desk.on<SettingsOpenPayload>(CH.settingsOpen, openSettings);
   desk.on(CH.settingsClose, () => void closeSettings(false));
   desk.on<Settings>(CH.settingsChanged, (next) => {

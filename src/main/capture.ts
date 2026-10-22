@@ -43,7 +43,7 @@ export function captureScreen(): Promise<NativeImage | null> {
   return grab(displayUnderMouse());
 }
 
-export async function captureArea(hint: string): Promise<NativeImage | null> {
+export async function captureArea(hint: string, font: string): Promise<NativeImage | null> {
   if (picking) return null;
   const display = displayUnderMouse();
   const image = await grab(display);
@@ -70,7 +70,7 @@ export async function captureArea(hint: string): Promise<NativeImage | null> {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   const rect = await new Promise<CaptureRect | null>((resolve) => {
-    picking = { win, init: { image: 'data:image/jpeg;base64,' + image.toJPEG(92).toString('base64'), hint }, resolve };
+    picking = { win, init: { image: 'data:image/jpeg;base64,' + image.toJPEG(92).toString('base64'), hint, font }, resolve };
     win.on('closed', () => resolve(null));
     win.once('ready-to-show', () => {
       win.setBounds(display.bounds);

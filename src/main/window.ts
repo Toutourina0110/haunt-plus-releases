@@ -27,6 +27,7 @@ import {
   type ShellState,
   type SiteId,
   type TabId,
+  type TourStartPayload,
   type TransitionPayload,
   type UiInit,
   type UpdateStatus,
@@ -61,7 +62,7 @@ const LOGO_FILES: Record<TabId, [string, string]> = {
   images: ['assets/imagehost.svg', 'image/svg+xml'],
 };
 
-type OverlayMode = 'hidden' | 'menu' | 'full';
+type OverlayMode = 'hidden' | 'menu' | 'full' | 'tour';
 type Run = { target: TabId; aborted: boolean };
 type Signal = typeof CH.overlayReady | typeof CH.overlayCovered | typeof CH.overlayDone | typeof CH.settingsClosed;
 
@@ -89,6 +90,7 @@ export class MainWindow {
   private overlayMode: OverlayMode = 'full';
   private busy = true;
   private settingsOpen = false;
+  private tourOn = false;
   private recording = false;
   private edgeSince = 0;
   private outSince = 0;
@@ -184,6 +186,7 @@ export class MainWindow {
     this.busy = false;
     this.endRun();
     this.startPolling();
+    if (!this.deps.settings.value('tourAppSeen') && this.win.isVisible()) void this.startAppTour();
   }
 
   show(): void {
@@ -262,6 +265,12 @@ export class MainWindow {
       case CH.menuAction:
         if (sender === this.overlay.webContents) void this.onMenu(data as MenuAction);
         break;
+      case CH.tourRequest:
+        if (sender === this.win.webContents) void this.startAppTour();
+        break;
+      case CH.tourDone:
+        if (sender === this.overlay.webContents) this.endAppTour();
+        break;
     }
   }
 
@@ -287,7 +296,7 @@ export class MainWindow {
       view.webContents.focus();
       return;
     }
-    if (this.busy) return;
+    if (this.busy || this.tourOn) return;
     this.closeSettings();
 
     this.busy = true;
@@ -413,7 +422,7 @@ export class MainWindow {
   private checkCursor(): void {
     if (this.win.isDestroyed()) return;
     const usable = this.win.isVisible() && !this.win.isMinimized() && this.win.isFocused();
-    if (!usable || this.busy || this.overlayMode === 'full') {
+    if (!usable || this.busy || this.overlayMode === 'full' || this.overlayMode === 'tour') {
       if (this.overlayMode === 'menu' && !usable) this.hideMenu();
       this.edgeSince = 0;
       return;
@@ -483,7 +492,7 @@ export class MainWindow {
   }
 
   async openSettings(): Promise<void> {
-    if (this.busy || this.settingsOpen) return;
+    if (this.busy || this.settingsOpen || this.tourOn) return;
     this.show();
     this.settingsOpen = true;
     const shot = await snapshot(this.views[this.active]);
@@ -520,6 +529,55 @@ export class MainWindow {
     this.views.images.webContents.reload();
     await ready;
     if (reopen) await this.openSettings();
+  }
+
+  async startAppTour(): Promise<void> {
+    if (this.busy || this.tourOn) return;
+    this.show();
+    this.closeSettings();
+    this.hideMenu();
+    this.tourOn = true;
+    this.showOverlay('tour');
+    await this.sendTour();
+    this.overlay.webContents.focus();
+  }
+
+  private endAppTour(): void {
+    if (!this.tourOn) return;
+    this.tourOn = false;
+    this.hideOverlay();
+    this.deps.settings.update({ tourAppSeen: true });
+    this.views[this.active].webContents.focus();
+  }
+
+  private async sendTour(): Promise<void> {
+    const code = `(() => {
+      const box = (id) => {
+        const el = document.getElementById(id);
+        if (!el || getComputedStyle(el).visibility === 'hidden') return null;
+        const r = el.getBoundingClientRect();
+        return r.width && r.height ? [r.x, r.y, r.width, r.height] : null;
+      };
+      const area = navigator.windowControlsOverlay && navigator.windowControlsOverlay.getTitlebarAreaRect();
+      const bar = area && area.width ? [area.x, area.y, area.width, area.height] : null;
+      return { switch: box('switch'), nav: box('nav'), copy: box('copy'), help: box('help'), bar };
+    })()`;
+    let raw: Record<string, unknown> = {};
+    try {
+      raw = (await this.win.webContents.executeJavaScript(code)) as Record<string, unknown>;
+    } catch {
+      raw = {};
+    }
+    const rect = (v: unknown) =>
+      Array.isArray(v) && v.length === 4 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
+        ? { x: v[0], y: v[1], w: v[2], h: v[3] }
+        : null;
+    this.sendOverlay(CH.tourStart, {
+      rects: { switch: rect(raw.switch), nav: rect(raw.nav), copy: rect(raw.copy), help: rect(raw.help) },
+      titlebar: rect(raw.bar),
+      active: this.active,
+      hauntPlus: this.deps.settings.value('hauntPlus'),
+    } satisfies TourStartPayload);
   }
 
   sendToOverlay(channel: string, data?: unknown): void {
@@ -748,6 +806,15 @@ export class MainWindow {
     for (const view of Object.values(this.views)) view.setBounds(rect);
     if (this.overlayMode === 'full') this.overlay.setBounds(rect);
     if (this.overlayMode === 'menu') this.overlay.setBounds(this.menuRect());
+    if (this.overlayMode === 'tour') {
+      this.overlay.setBounds(this.windowRect());
+      void this.sendTour();
+    }
+  }
+
+  private windowRect(): Rectangle {
+    const [width, height] = this.win.getContentSize();
+    return { x: 0, y: 0, width, height };
   }
 
   private siteRect(): Rectangle {
@@ -764,7 +831,7 @@ export class MainWindow {
 
   private showOverlay(mode: Exclude<OverlayMode, 'hidden'>): void {
     this.overlayMode = mode;
-    this.overlay.setBounds(mode === 'full' ? this.siteRect() : this.menuRect());
+    this.overlay.setBounds(mode === 'full' ? this.siteRect() : mode === 'tour' ? this.windowRect() : this.menuRect());
     this.overlay.setVisible(true);
     this.raise(this.overlay);
   }

@@ -11,7 +11,7 @@
   --ease-swap: cubic-bezier(0.65, 0, 0.35, 1);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --swap: 420ms;
-  font-family: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  font-family: var(--app-font, 'Average Sans'), 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.45;
   color: var(--fg);

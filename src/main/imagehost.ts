@@ -185,7 +185,7 @@ export class ImageHost {
   }
 
   async captureArea(): Promise<void> {
-    await this.capture(() => captureArea(t(this.deps.locale(), 'captureHint')));
+    await this.capture(() => captureArea(t(this.deps.locale(), 'captureHint'), this.deps.settings.value('font')));
   }
 
   async captureScreen(): Promise<void> {

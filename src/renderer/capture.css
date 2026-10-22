@@ -6,7 +6,7 @@ body {
   background: #000;
   cursor: crosshair;
   user-select: none;
-  font-family: 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+  font-family: var(--app-font, 'Average Sans'), 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
 }
 
 [hidden] {

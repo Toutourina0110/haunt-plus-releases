@@ -31,12 +31,15 @@ export interface Settings {
   animations: AnimationMode;
   transitionSpeed: TransitionSpeed;
   language: LanguageSetting;
+  font: string;
   imagehostLink: LinkKind;
   imagehostSaveLocal: boolean;
   imagehostShortcuts: boolean;
   shortcutArea: string;
   shortcutScreen: string;
   shortcutClipboard: string;
+  tourAppSeen: boolean;
+  tourImagesSeen: boolean;
   externalLinks: LinkTarget;
   hauntPlus: boolean;
   globalShortcut: boolean;
@@ -52,12 +55,15 @@ export const EDITABLE_KEYS = [
   'animations',
   'transitionSpeed',
   'language',
+  'font',
   'imagehostLink',
   'imagehostSaveLocal',
   'imagehostShortcuts',
   'shortcutArea',
   'shortcutScreen',
   'shortcutClipboard',
+  'tourAppSeen',
+  'tourImagesSeen',
   'externalLinks',
   'hauntPlus',
   'globalShortcut',
@@ -122,6 +128,13 @@ export interface TransitionPayload {
   toSite: TabId;
   from: PageShot | null;
   to: PageShot | null;
+}
+
+export interface TourStartPayload {
+  rects: Record<'switch' | 'nav' | 'copy' | 'help', Box | null>;
+  titlebar: Box | null;
+  active: TabId;
+  hauntPlus: boolean;
 }
 
 export interface SettingsOpenPayload {
@@ -197,6 +210,7 @@ export interface KeyResult {
 export interface CaptureInit {
   image: string;
   hint: string;
+  font: string;
 }
 
 export interface CaptureRect {

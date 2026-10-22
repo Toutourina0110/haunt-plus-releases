@@ -41,7 +41,7 @@ await build({
 });
 
 await mkdir('dist/renderer/assets', { recursive: true });
-for (const file of ['shell.html', 'overlay.html', 'popup.html', 'capture.html', 'imagehost.html', 'base.css', 'shell.css', 'overlay.css', 'popup.css', 'capture.css', 'imagehost.css']) {
+for (const file of ['shell.html', 'overlay.html', 'popup.html', 'capture.html', 'imagehost.html', 'base.css', 'shell.css', 'overlay.css', 'popup.css', 'capture.css', 'imagehost.css', 'tour.css', 'fonts.css']) {
   await cp(`src/renderer/${file}`, `dist/renderer/${file}`);
 }
 await cp('src/renderer/assets', 'dist/renderer/assets', { recursive: true });

@@ -22,16 +22,37 @@
         geist:   { label: 'Geist',     stack: '"Geist", "Inter", ui-sans-serif, sans-serif' },
         mono:    { label: 'Monospace', stack: 'ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace' },
         serif:   { label: 'Serif',     stack: 'ui-serif, Georgia, "Times New Roman", serif' },
+        custom:  { label: 'Google Fonts…', stack: '' },
     };
 
+    const FONT_WEIGHTS = [
+        { v: 0,   label: 'Site default' },
+        { v: 200, label: 'Extra light 200' },
+        { v: 300, label: 'Light 300' },
+        { v: 400, label: 'Regular 400' },
+        { v: 500, label: 'Medium 500' },
+        { v: 600, label: 'Semibold 600' },
+        { v: 700, label: 'Bold 700' },
+        { v: 800, label: 'Extrabold 800' },
+        { v: 900, label: 'Black 900' },
+    ];
+    const FONT_WEIGHT_VALUES = FONT_WEIGHTS.map(w => w.v);
+
+    const SCRIPT_VERSION = '4.15.0';
     const HIST_KEY = 'haunt_reciprocity_history_v1';
     const INTRO_FLAG = 'haunt_intro_seen_v1';
     const INTRO_PHRASE = 'I UNDERSTAND';
     const CODE_PREFIX = 'HAUNT1-';
     const CODE_FIELDS = [
         'preset', 'accent', 'bg', 'fg', 'contrast', 'bgIntensity', 'radius', 'font',
-        'glow', 'scrub', 'logoRgb', 'card', 'border', 'sidebar', 'success', 'warning', 'error', 'activeFg',
+        'glow', 'scrub', 'logoRgb', 'card', 'border', 'sidebar', 'success', 'warning', 'error', 'activeFg', 'customFont', 'fontWeight', 'fontItalic', 'fontHeadings',
     ];
+
+    const AUTO_SURFACES = ['card', 'border', 'sidebar', 'activeFg'];
+    const AUTO_LABELS = {
+        card: 'Cards', border: 'Borders', sidebar: 'Sidebar', activeFg: 'Text on accent',
+    };
+
     const LINK_TOS = 'https://haunt-tools.site/tos';
     const LINK_PRIVACY = 'https://haunt-tools.site/privacy';
     const LINK_CONTACT = 'https://haunt.gg/toutourina';
@@ -72,6 +93,7 @@
 
     const C4C_BTN_ID = 'haunt-c4c-btn';
     const HUB_BTN_ID = 'haunt-hub-btn';
+    const HUB_ROW_ID = 'haunt-hub-row';
     const HUB_MENU_ID = 'haunt-hub-menu';
     let hubHost = null;
     const L4L_BTN_ID = 'haunt-l4l-btn';
@@ -108,6 +130,10 @@
         bgIntensity: 100,
         radius: 12,
         font: 'default',
+        customFont: '',
+        fontWeight: 0,
+        fontItalic: false,
+        fontHeadings: false,
         glow: false,
         scrub: true,
         logoRgb: true,
@@ -161,6 +187,7 @@
         const row = CODE_FIELDS.map(k => {
             const v = cfg[k];
             if (v === null || v === undefined) return null;
+            if (k === 'customFont') return String(v);
             if (typeof v === 'string' && /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) {
                 return normHex(v).slice(1);
             }
@@ -188,6 +215,7 @@
             return /^[0-9a-fA-F]{6}$/.test(t) ? '#' + t.toLowerCase() : undefined;
         };
         const num = (v, lo, hi) => {
+            if (v === null || v === undefined || v === '') return undefined;
             const n = Number(v);
             return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : undefined;
         };
@@ -202,10 +230,13 @@
 
             if (key === 'preset') clean = Object.prototype.hasOwnProperty.call(PRESETS, v) ? v : undefined;
             else if (key === 'font') clean = Object.prototype.hasOwnProperty.call(FONTS, v) ? v : undefined;
+            else if (key === 'customFont') clean = v === '' ? '' : (validFontName(v) || undefined);
             else if (key === 'contrast') clean = num(v, 30, 220);
             else if (key === 'bgIntensity') clean = num(v, 20, 100);
             else if (key === 'radius') clean = num(v, 0, 28);
-            else if (key === 'glow' || key === 'scrub' || key === 'logoRgb') clean = v === true || v === false ? v : undefined;
+            else if (key === 'fontWeight') clean = FONT_WEIGHT_VALUES.indexOf(Number(v)) >= 0 ? Number(v) : undefined;
+            else if (key === 'glow' || key === 'scrub' || key === 'logoRgb' || key === 'fontItalic' || key === 'fontHeadings')
+                clean = v === true || v === false ? v : undefined;
             else clean = colour(v, key);
 
             if (clean !== undefined) {
@@ -220,6 +251,9 @@
     function applyThemeCode(code) {
         const parsed = parseThemeCode(code);
         if (!parsed) return false;
+        for (const k of AUTO_SURFACES) {
+            if (!Object.prototype.hasOwnProperty.call(parsed, k)) cfg[k] = null;
+        }
         Object.assign(cfg, parsed);
         writeStore();
         applyTheme();
@@ -304,6 +338,37 @@
         return /^#?[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(String(v).trim());
     }
 
+    function validFontName(v) {
+        const t = String(v || '').trim().replace(/\s+/g, ' ');
+        return /^[A-Za-z0-9][A-Za-z0-9 -]{0,48}$/.test(t) ? t : null;
+    }
+
+    function fontFamilyParam(name) {
+        return encodeURIComponent(name).replace(/%20/g, '+');
+    }
+
+    function googleFontHrefs(name) {
+        const wght = [200, 300, 400, 500, 600, 700, 800, 900];
+        const axes = wght.map(w => '0,' + w).concat(wght.map(w => '1,' + w)).join(';');
+        const base = 'https://fonts.googleapis.com/css2?family=' + fontFamilyParam(name);
+        return [
+            base + ':ital,wght@' + axes + '&display=swap',
+            base + ':wght@' + wght.join(';') + '&display=swap',
+            base + '&display=swap',
+        ];
+    }
+
+    function activeFontStack() {
+        if (cfg.font === 'custom') {
+            const name = validFontName(cfg.customFont);
+            if (!name) return '';
+            const titled = titleCaseFamily(name);
+            const alt = titled !== name ? `, "${titled}"` : '';
+            return `"${name}"${alt}, ui-sans-serif, system-ui, sans-serif`;
+        }
+        return FONTS[cfg.font] ? FONTS[cfg.font].stack : '';
+    }
+
     function normHex(v) {
         let t = String(v).trim().replace('#', '');
         if (t.length === 3) t = t.split('').map(c => c + c).join('');
@@ -334,6 +399,18 @@
         };
     }
 
+    function autoSurfaceValue(key) {
+        const saved = cfg[key];
+        cfg[key] = null;
+        let out;
+        try {
+            out = key === 'activeFg' ? onColor(cfg.accent) : palette()[key];
+        } finally {
+            cfg[key] = saved;
+        }
+        return out;
+    }
+
     const SCOPE_RE = /^\/(dashboard|acp)(\/|$)/;
 
     function inScope() {
@@ -356,7 +433,7 @@
         const radiusVars = Object.entries(scale)
             .map(([k, v]) => `  --radius-${k}: ${Math.round(v)}px !important;`).join('\n');
 
-        const fontStack = FONTS[cfg.font] ? FONTS[cfg.font].stack : '';
+        const fontStack = activeFontStack();
 
         return `
 :root, .dark, html, body, [data-theme] {
@@ -487,6 +564,15 @@ button[data-slot="button"]:not([data-variant="ghost"]):hover {
 ${fontStack ? `
 html, body, button, input, select, textarea {
   font-family: ${fontStack} !important;
+}` : ''}
+${cfg.fontWeight || cfg.fontItalic ? `
+html, body, p, li, label, span, button, input, select, textarea {
+  ${cfg.fontWeight ? `font-weight: ${cfg.fontWeight} !important;` : ''}
+  ${cfg.fontItalic ? 'font-style: italic !important;' : ''}
+}` : ''}
+${cfg.fontHeadings && cfg.fontWeight ? `
+body *:not(svg):not(svg *) {
+  font-weight: ${cfg.fontWeight} !important;
 }` : ''}
 `;
     }
@@ -644,6 +730,110 @@ html, body, button, input, select, textarea {
         }
     }
 
+    let fontLink = null;
+    let fontState = { name: null, status: 'idle' };
+    const onFontState = new Set();
+
+    function setFontState(name, status) {
+        fontState = { name: name, status: status };
+        for (const fn of onFontState) {
+            try { fn(fontState); } catch (e) {}
+        }
+    }
+
+    function titleCaseFamily(name) {
+        return name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
+
+    const FONT_PROBE = 'WAOwiil@#MImm0O1lI';
+    const FONT_FALLBACKS = ['monospace', 'serif', 'sans-serif'];
+    let fontCanvas = null;
+
+    function probeWidths(family) {
+        if (!fontCanvas) fontCanvas = document.createElement('canvas');
+        const ctx = fontCanvas.getContext('2d');
+        const out = [];
+        for (const fb of FONT_FALLBACKS) {
+            ctx.font = '72px ' + (family ? '"' + family + '", ' : '') + fb;
+            out.push(ctx.measureText(FONT_PROBE).width);
+        }
+        return out;
+    }
+
+    function fontUsable(name) {
+        try {
+            const base = probeWidths(null);
+            const test = probeWidths(name);
+            for (let i = 0; i < base.length; i++) {
+                if (Math.abs(base[i] - test[i]) > 0.5) return true;
+            }
+            return false;
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function syncFontLink() {
+        const name = cfg.enabled && inScope() && cfg.font === 'custom'
+            ? validFontName(cfg.customFont)
+            : null;
+
+        if (!name) {
+            if (fontLink) { fontLink.remove(); fontLink = null; }
+            if (fontState.status !== 'idle') setFontState(null, 'idle');
+            return;
+        }
+        if (fontLink && fontLink.isConnected && fontState.name === name) return;
+
+        if (fontLink) fontLink.remove();
+        setFontState(name, 'loading');
+
+        const spellings = [name];
+        const titled = titleCaseFamily(name);
+        if (titled !== name) spellings.push(titled);
+
+        const tries = [];
+        for (const sp of spellings) {
+            for (const href of googleFontHrefs(sp)) tries.push({ family: sp, href: href });
+        }
+
+        const attempt = i => {
+            const link = document.createElement('link');
+            link.id = 'haunt-google-font';
+            link.rel = 'stylesheet';
+            fontLink = link;
+
+            const settle = errored => {
+                if (fontLink !== link) return;
+                const decide = () => {
+                    if (fontLink !== link) return;
+                    if (fontUsable(tries[i].family) || fontUsable(name)) {
+                        setFontState(name, 'ready');
+                    } else if (i + 1 < tries.length) {
+                        link.remove();
+                        attempt(i + 1);
+                    } else {
+                        setFontState(name, errored ? 'error' : 'missing');
+                    }
+                };
+                if (document.fonts && document.fonts.load) {
+                    const both = [tries[i].family, name].filter((v, k, a) => a.indexOf(v) === k)
+                        .map(f => document.fonts.load('72px "' + f + '"').catch(() => null));
+                    Promise.all(both).then(() => setTimeout(decide, 30), () => setTimeout(decide, 30));
+                } else {
+                    setTimeout(decide, 30);
+                }
+            };
+
+            link.addEventListener('load', () => settle(false));
+            link.addEventListener('error', () => settle(true));
+            link.href = tries[i].href;
+            (document.head || document.documentElement).appendChild(link);
+        };
+
+        attempt(0);
+    }
+
     let styleEl = null;
 
     function applyTheme() {
@@ -656,6 +846,7 @@ html, body, button, input, select, textarea {
         }
         const css = buildCss();
         if (styleEl.textContent !== css) styleEl.textContent = css;
+        syncFontLink();
         syncLogo();
     }
 
@@ -669,6 +860,12 @@ html, body, button, input, select, textarea {
             applyTheme();
             scheduleScrub();
         }).observe(document.documentElement, { childList: true, subtree: true });
+
+        let sweeps = 0;
+        const sweep = setInterval(() => {
+            applyTheme();
+            if (++sweeps >= 30) clearInterval(sweep);
+        }, 400);
     }
 
     boot();
@@ -751,12 +948,14 @@ html, body, button, input, select, textarea {
         buildPanel();
     }
 
-    function colorRow(id, label, value) {
+    function colorRow(id, label, value, auto) {
+        const pinned = auto ? !!cfg[id] : false;
         return `
-  <label>${label}
+  <label data-row="${id}" data-pinned="${pinned ? 1 : 0}">${label}${auto ? ' <span class="pin">pinned</span>' : ''}
     <span class="crow">
       <input type="color" id="${id}" value="${value}">
       <input type="text" id="${id}Hex" value="${value}">
+      ${auto ? `<span class="auto"><input type="checkbox" id="${id}Auto" ${pinned ? '' : 'checked'}><label for="${id}Auto">auto</label></span>` : ''}
     </span>
   </label>`;
     }
@@ -796,7 +995,14 @@ html, body, button, input, select, textarea {
   .panel p a:hover { color: #fff; }
   .panel label { display: block; margin-top: 9px; color: #b4b4b4; }
   .panel label > span.v { color: #fff; }
-  .crow { display: flex; gap: 5px; margin-top: 3px; }
+  .crow { display: flex; gap: 5px; margin-top: 3px; align-items: center; }
+  .crow .auto { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; }
+  .crow .auto label { margin: 0; color: #8f8f8f; font-size: 11px; cursor: pointer; }
+  .pin { display: none; }
+  label[data-pinned="1"] .pin {
+    display: inline; color: #e7c07a; font-size: 9.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em; margin-inline-start: 4px;
+  }
   .panel select,
   .panel input[type=text] {
     width: 100%;
@@ -867,8 +1073,10 @@ html, body, button, input, select, textarea {
   .panel button.danger.armed { background: #a33; border-color: #a33; color: #fff; font-weight: 600; }
   .wipeNote { color: #8a8a8a; font-size: 11px; margin-top: 5px; line-height: 1.4; }
   .codeMsg { color: #8a8a8a; font-size: 11px; margin-top: 6px; line-height: 1.4; }
+  .codeMsg:empty { display: none; }
   .codeMsg.good { color: #7fdca2; }
   .codeMsg.bad { color: #e79a9a; }
+  .codeMsg.warn { color: #e7c07a; }
   .panel input#code { font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
   .hint { margin-top: 8px; color: #666; font-size: 11px; }
 </style>
@@ -901,19 +1109,20 @@ ${colorRow('fg', 'Text', cfg.fg)}
 
     <label><input type="checkbox" id="scrub" ${cfg.scrub ? 'checked' : ''}> Remove leftover pink</label>
     <label><input type="checkbox" id="advanced" ${cfg.advanced ? 'checked' : ''}> More colours</label>
+    <div class="codeMsg" id="pinNote"></div>
 
     <div id="adv" style="display:${cfg.advanced ? 'block' : 'none'};margin-top:8px">
       <h3>Surfaces</h3>
-${colorRow('card', 'Cards', cfg.card || p.card)}
-${colorRow('border', 'Borders', cfg.border || p.border)}
-${colorRow('sidebar', 'Sidebar', cfg.sidebar || p.sidebar)}
+${colorRow('card', 'Cards', cfg.card || p.card, true)}
+${colorRow('border', 'Borders', cfg.border || p.border, true)}
+${colorRow('sidebar', 'Sidebar', cfg.sidebar || p.sidebar, true)}
       <h3>Selected items</h3>
-${colorRow('activeFg', 'Text on accent', cfg.activeFg || onColor(cfg.accent))}
+${colorRow('activeFg', 'Text on accent', cfg.activeFg || onColor(cfg.accent), true)}
       <h3>States</h3>
 ${colorRow('success', 'Success', cfg.success)}
 ${colorRow('warning', 'Warning', cfg.warning)}
 ${colorRow('error', 'Error', cfg.error)}
-      <button id="autoSurf" style="margin-top:8px">Back to auto</button>
+      <button id="autoSurf" style="margin-top:8px">All back to auto</button>
     </div>
   </div>
 
@@ -926,6 +1135,20 @@ ${colorRow('error', 'Error', cfg.error)}
     <label>Font
       <select id="font"></select>
     </label>
+
+    <div id="customFontRow" style="display:${cfg.font === 'custom' ? 'block' : 'none'}">
+      <label>Google Fonts family
+        <input type="text" id="customFont" spellcheck="false" autocomplete="off"
+               placeholder="Poppins" value="${esc(cfg.customFont || '')}">
+      </label>
+      <div class="codeMsg" id="fontMsg"></div>
+    </div>
+
+    <label>Weight
+      <select id="fontWeight"></select>
+    </label>
+    <label><input type="checkbox" id="fontHeadings" ${cfg.fontHeadings ? 'checked' : ''}> Force weight on titles too</label>
+    <label><input type="checkbox" id="fontItalic" ${cfg.fontItalic ? 'checked' : ''}> Italic</label>
 
     <label><input type="checkbox" id="logoRgb" ${cfg.logoRgb ? 'checked' : ''}> RGB logo</label>
     <label><input type="checkbox" id="glow" ${cfg.glow ? 'checked' : ''}> Glow effects</label>
@@ -954,6 +1177,7 @@ ${colorRow('error', 'Error', cfg.error)}
 
   <div class="sec" data-sec="script" data-open="${cfg.secOpen.script ? 1 : 0}">
     <h2><span class="caret"></span>Script</h2>
+    <div class="codeMsg" id="verLine">haunt+ v${SCRIPT_VERSION}</div>
     <label><input type="checkbox" id="enabled" ${cfg.enabled ? 'checked' : ''}> Theme enabled</label>
     <button id="reset" style="margin-top:8px">Reset theme</button>
     <button id="wipe" class="danger">Reset everything</button>
@@ -976,9 +1200,45 @@ ${colorRow('error', 'Error', cfg.error)}
         }
 
         function rebuild() {
+            onFontState.delete(showFontState);
             host.remove();
             host = null;
             buildPanel();
+        }
+
+        function pinNote() {
+            const el = $('pinNote');
+            if (!el) return;
+            const on = AUTO_SURFACES.filter(k => cfg[k]);
+            if (!on.length) {
+                el.className = 'codeMsg';
+                el.textContent = '';
+                return;
+            }
+            el.className = 'codeMsg warn';
+            el.textContent = on.map(k => AUTO_LABELS[k]).join(', ') +
+                (on.length > 1 ? ' are' : ' is') +
+                ' pinned and will not follow the background. Open More colours and tick auto to release.';
+        }
+
+        function markPinned(key) {
+            if (AUTO_SURFACES.indexOf(key) < 0) return;
+            const row = root.querySelector('[data-row="' + key + '"]');
+            if (row) row.setAttribute('data-pinned', cfg[key] ? '1' : '0');
+            const chk = $(key + 'Auto');
+            if (chk) chk.checked = !cfg[key];
+            pinNote();
+        }
+
+        function refreshAuto() {
+            for (const k of AUTO_SURFACES) {
+                if (cfg[k]) continue;
+                const picker = $(k), hex = $(k + 'Hex');
+                if (!picker || !hex) continue;
+                const v = autoSurfaceValue(k);
+                picker.value = v;
+                hex.value = v;
+            }
         }
 
         function fillSelect(el, map, current) {
@@ -993,24 +1253,43 @@ ${colorRow('error', 'Error', cfg.error)}
 
         fillSelect($('preset'), PRESETS, cfg.preset);
         fillSelect($('font'), FONTS, cfg.font);
+        const wSel = $('fontWeight');
+        for (const w of FONT_WEIGHTS) {
+            const o = document.createElement('option');
+            o.value = String(w.v);
+            o.textContent = w.label;
+            if (w.v === cfg.fontWeight) o.selected = true;
+            wSel.appendChild(o);
+        }
 
         function bindColor(id, key) {
             const picker = $(id), hex = $(id + 'Hex');
             if (!picker) return;
-            picker.addEventListener('input', e => {
-                cfg[key] = e.target.value;
-                hex.value = e.target.value;
+
+            const set = v => {
+                cfg[key] = v;
+                picker.value = v;
+                hex.value = v;
+                markPinned(key);
                 commit();
-            });
+                refreshAuto();
+            };
+
+            picker.addEventListener('input', e => set(e.target.value));
             hex.addEventListener('change', e => {
-                if (isValidHex(e.target.value)) {
-                    cfg[key] = normHex(e.target.value);
-                    picker.value = cfg[key];
-                    commit();
-                } else {
-                    e.target.value = cfg[key] || picker.value;
-                }
+                if (isValidHex(e.target.value)) set(normHex(e.target.value));
+                else e.target.value = cfg[key] || picker.value;
             });
+
+            const chk = $(id + 'Auto');
+            if (chk) {
+                chk.addEventListener('change', e => {
+                    cfg[key] = e.target.checked ? null : normHex(picker.value);
+                    markPinned(key);
+                    commit();
+                    refreshAuto();
+                });
+            }
         }
 
         ['accent', 'bg', 'fg', 'card', 'border', 'sidebar', 'success', 'warning', 'error', 'activeFg']
@@ -1021,12 +1300,16 @@ ${colorRow('error', 'Error', cfg.error)}
                 cfg[key] = cast(e.target.value);
                 $(id + 'V').textContent = cfg[key];
                 commit();
+                refreshAuto();
             });
         }
 
         bindRange('contrast', 'contrast', parseInt);
         bindRange('bgIntensity', 'bgIntensity', parseInt);
         bindRange('radius', 'radius', parseInt);
+
+        pinNote();
+        refreshAuto();
 
         $('preset').addEventListener('change', e => {
             const preset = PRESETS[e.target.value];
@@ -1044,7 +1327,62 @@ ${colorRow('error', 'Error', cfg.error)}
             rebuild();
         });
 
-        $('font').addEventListener('change', e => { cfg.font = e.target.value; commit(); });
+        const fontRow = $('customFontRow');
+        const fontInput = $('customFont');
+        const fontMsg = $('fontMsg');
+
+        const showFontState = st => {
+            if (!host || !host.isConnected) { onFontState.delete(showFontState); return; }
+            if (cfg.font !== 'custom') { fontMsg.textContent = ''; return; }
+            const name = validFontName(cfg.customFont);
+            if (!name) {
+                fontMsg.className = 'codeMsg';
+                fontMsg.textContent = cfg.customFont
+                    ? 'Letters, numbers, spaces and hyphens only.'
+                    : 'Type a family name exactly as it appears on Google Fonts.';
+                return;
+            }
+            const map = {
+                loading: ['codeMsg', 'Loading ' + name + '…'],
+                ready:   ['codeMsg good', name + ' is applied.'],
+                missing: ['codeMsg bad', 'The stylesheet loaded but "' + name + '" did not resolve. Check the spelling.'],
+                error:   ['codeMsg bad', 'Google Fonts did not return "' + name +
+                          '". Either the family name is wrong, or the site is blocking Google Fonts.'],
+            };
+            const m = map[st && st.status] || ['codeMsg', ''];
+            fontMsg.className = m[0];
+            fontMsg.textContent = m[1];
+        };
+
+        onFontState.add(showFontState);
+        showFontState(fontState);
+
+        let fontTimer = null;
+        const pushFont = () => {
+            clearTimeout(fontTimer);
+            cfg.customFont = fontInput.value;
+            commit();
+            showFontState(fontState);
+        };
+        fontInput.addEventListener('input', () => {
+            clearTimeout(fontTimer);
+            fontTimer = setTimeout(pushFont, 500);
+        });
+        fontInput.addEventListener('change', pushFont);
+
+        $('font').addEventListener('change', e => {
+            cfg.font = e.target.value;
+            fontRow.style.display = cfg.font === 'custom' ? 'block' : 'none';
+            commit();
+            showFontState(fontState);
+        });
+        $('fontWeight').addEventListener('change', e => {
+            const v = Number(e.target.value);
+            cfg.fontWeight = FONT_WEIGHT_VALUES.indexOf(v) >= 0 ? v : 0;
+            commit();
+        });
+        $('fontHeadings').addEventListener('change', e => { cfg.fontHeadings = e.target.checked; commit(); });
+        $('fontItalic').addEventListener('change', e => { cfg.fontItalic = e.target.checked; commit(); });
         $('logoRgb').addEventListener('change', e => { cfg.logoRgb = e.target.checked; commit(); });
         $('glow').addEventListener('change', e => { cfg.glow = e.target.checked; commit(); });
         $('scrub').addEventListener('change', e => { cfg.scrub = e.target.checked; commit(); scheduleScrub(); });
@@ -1057,7 +1395,7 @@ ${colorRow('error', 'Error', cfg.error)}
         });
 
         $('autoSurf').addEventListener('click', () => {
-            cfg.card = cfg.border = cfg.sidebar = cfg.activeFg = null;
+            for (const k of AUTO_SURFACES) cfg[k] = null;
             commit();
             rebuild();
         });
@@ -1945,6 +2283,7 @@ ${colorRow('error', 'Error', cfg.error)}
     }
 
     const HUB_MARK_CLS = 'haunt-hub-mark';
+    const HUB_EDGE_CLS = 'haunt-hub-edge';
     const TILE_SEL = 'button[aria-label="Share your profile"]';
     const TILE_FALLBACK = 'flex h-14 min-w-0 items-center gap-2 rounded-2xl border border-foreground/5 ' +
         'bg-card px-2.5 shadow-sm transition-all hover:bg-accent active:translate-y-0.5';
@@ -1997,51 +2336,119 @@ ${colorRow('error', 'Error', cfg.error)}
             if (col) el.style.setProperty('color', col, 'important');
             else el.style.removeProperty('color');
         }
+        for (const el of document.querySelectorAll('.' + HUB_EDGE_CLS)) {
+            if (col) {
+                el.style.setProperty('border-style', 'solid', 'important');
+                el.style.setProperty('border-width', '1px', 'important');
+                for (const side of ['top', 'right', 'bottom', 'left']) {
+                    el.style.setProperty('border-' + side + '-color', col, 'important');
+                }
+            } else {
+                el.style.removeProperty('border-style');
+                el.style.removeProperty('border-width');
+                for (const side of ['top', 'right', 'bottom', 'left']) {
+                    el.style.removeProperty('border-' + side + '-color');
+                }
+            }
+        }
     }
 
     function hubMenuOpen() {
         return !!(hubHost && hubHost.isConnected);
     }
 
-    function ensureHubButton() {
+    function hubMount() {
         const anchor = previewAnchor();
-        if (!anchor || !anchor.parentElement) return;
-        const bar = anchor.parentElement;
+        if (!anchor || !anchor.parentElement) return null;
+        const li = anchor.closest('li');
+        if (li && li.parentElement && li.parentElement.tagName === 'UL') return { own: true, after: li };
+        return { own: false, after: anchor };
+    }
 
-        removeNavLinks();
+    function hubLabel(el) {
+        el.classList.add(HUB_MARK_CLS);
+        el.style.setProperty('font-style', 'italic', 'important');
+        el.style.setProperty('font-weight', '700', 'important');
+        el.textContent = 'haunt+';
+        return el;
+    }
 
-        const found = bar.querySelector('#' + HUB_BTN_ID);
-        if (found) {
-            if (ownNodes.has(found)) {
-                if (found.previousElementSibling !== anchor) anchor.insertAdjacentElement('afterend', found);
-                return;
-            }
-            found.remove();
-        }
+    function hubRowButton() {
+        const btn = hubTile('button', hubMarkSvg(22), 'Tools', 'haunt+');
+        btn.style.width = '';
+        btn.style.flex = '';
+        const txt = btn.children[1];
+        if (txt && txt.children.length >= 2) hubLabel(txt.children[1]);
+        else if (txt) hubLabel(txt);
+        return btn;
+    }
 
+    function hubInlineButton(anchor) {
         const btn = document.createElement('button');
-        btn.id = HUB_BTN_ID;
-        btn.type = 'button';
         btn.className = anchor.getAttribute('class') || '';
         btn.setAttribute('data-slot', 'button');
         btn.setAttribute('data-variant', anchor.getAttribute('data-variant') || 'outline');
         btn.setAttribute('data-size', anchor.getAttribute('data-size') || 'default');
+        btn.innerHTML = hubMarkSvg(22) + '<span class="hidden md:inline"></span>';
+        hubLabel(btn.querySelector('span'));
+        return btn;
+    }
+
+    function ensureHubButton() {
+        const mount = hubMount();
+        if (!mount) return;
+
+        removeNavLinks();
+
+        const found = document.getElementById(HUB_BTN_ID);
+        const holder = document.getElementById(HUB_ROW_ID) || found;
+        if (found) {
+            if (ownNodes.has(found) && (holder === found || ownNodes.has(holder))) {
+                const rightShape = mount.own === (holder.id === HUB_ROW_ID);
+                if (rightShape) {
+                    if (holder.previousElementSibling !== mount.after) {
+                        mount.after.insertAdjacentElement('afterend', holder);
+                    }
+                    return;
+                }
+            }
+            holder.remove();
+        }
+
+        const btn = mount.own ? hubRowButton() : hubInlineButton(mount.after);
+        btn.id = HUB_BTN_ID;
+        btn.type = 'button';
         btn.setAttribute('aria-haspopup', 'menu');
         btn.setAttribute('aria-expanded', 'false');
         btn.setAttribute('aria-label', 'haunt+ tools');
         btn.setAttribute('title', 'haunt+ tools');
-        btn.innerHTML = hubMarkSvg(26);
         btn.addEventListener('click', e => {
             e.preventDefault();
             e.stopPropagation();
             toggleHubMenu();
         });
         ownNodes.add(btn);
-        anchor.insertAdjacentElement('afterend', btn);
+
+        let node = btn;
+        if (mount.own) {
+            node = document.createElement('li');
+            node.id = HUB_ROW_ID;
+            node.className = mount.after.getAttribute('class') || '';
+            for (const at of ['data-slot', 'data-sidebar']) {
+                const v = mount.after.getAttribute(at);
+                if (v) node.setAttribute(at, v);
+            }
+            node.appendChild(btn);
+            ownNodes.add(node);
+        }
+        mount.after.insertAdjacentElement('afterend', node);
+        if (logoRaf) paintLogo(logoHue);
     }
 
     function removeHubButton() {
         closeHubMenu();
+        const row = document.getElementById(HUB_ROW_ID);
+        if (row) row.remove();
         const el = document.getElementById(HUB_BTN_ID);
         if (el) el.remove();
         removeNavLinks();
@@ -2078,15 +2485,20 @@ ${colorRow('error', 'Error', cfg.error)}
         const btn = document.getElementById(HUB_BTN_ID);
         if (!hubHost || !btn) return;
         const w = 300;
+        hubHost.style.boxSizing = 'border-box';
+        hubHost.style.width = w + 'px';
+
         const r = btn.getBoundingClientRect();
         const h = hubHost.offsetHeight || 320;
         let left = r.left + r.width / 2 - w / 2;
-        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
         let top = r.bottom + 8;
-        if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - 8 - h);
+        if (top + h > window.innerHeight - 8) top = r.top - 8 - h;
+
+        left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+        top = Math.max(8, Math.min(top, window.innerHeight - h - 8));
+
         hubHost.style.left = Math.round(left) + 'px';
         hubHost.style.top = Math.round(top) + 'px';
-        hubHost.style.width = w + 'px';
     }
 
     function hubTile(tag, icon, eyebrow, label) {
@@ -2148,7 +2560,7 @@ ${colorRow('error', 'Error', cfg.error)}
 
         hubHost = document.createElement('div');
         hubHost.id = HUB_MENU_ID;
-        hubHost.className = 'rounded-2xl border border-foreground/5 bg-card shadow-sm';
+        hubHost.className = 'rounded-2xl border border-foreground/5 bg-card shadow-sm ' + HUB_EDGE_CLS;
         hubHost.setAttribute('role', 'menu');
         hubHost.style.cssText =
             'position:fixed;top:-9999px;left:-9999px;z-index:2147483646;padding:6px;' +
@@ -2158,6 +2570,7 @@ ${colorRow('error', 'Error', cfg.error)}
         hubHost.appendChild(hubGroup('Tools'));
         for (const t of hubTools()) {
             const row = hubTile('button', t.icon, t.eyebrow, t.label);
+            row.classList.add(HUB_EDGE_CLS);
             row.addEventListener('click', e => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2172,6 +2585,7 @@ ${colorRow('error', 'Error', cfg.error)}
             hubHost.appendChild(hubGroup('Links'));
             for (const l of links) {
                 const row = hubTile('a', l.icon, 'Open', l.label);
+                row.classList.add(HUB_EDGE_CLS);
                 row.setAttribute('href', l.href);
                 if (l.external) {
                     row.setAttribute('target', '_blank');
@@ -2192,6 +2606,7 @@ ${colorRow('error', 'Error', cfg.error)}
         hubHost.appendChild(foot);
 
         mountOverlay(hubHost);
+        if (logoRaf) paintLogo(logoHue);
         btn.setAttribute('aria-expanded', 'true');
         btn.setAttribute('data-state', 'open');
         placeHubMenu();

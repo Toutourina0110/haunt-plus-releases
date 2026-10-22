@@ -1,6 +1,7 @@
 import { palette } from '../shared/palette';
 import { t, type StringKey } from '../shared/i18n';
 import type { Locale, TabId } from '../shared/types';
+import type { TourLabels } from './tour';
 
 export interface Desk {
   send(channel: string, data?: unknown): void;
@@ -69,11 +70,44 @@ export const ICONS = {
     '<path d="M11.5 3.5h5v5"/><path d="M16.5 3.5 9.5 10.5"/><path d="M14.5 11.5v3.2a1.8 1.8 0 0 1-1.8 1.8H5.3a1.8 1.8 0 0 1-1.8-1.8V7.3a1.8 1.8 0 0 1 1.8-1.8h3.2"/>',
   ),
   images: stroke('<rect x="2.5" y="3.5" width="15" height="13" rx="2.2"/><circle cx="7.3" cy="8.2" r="1.6"/><path d="m17.2 13.2-3.9-3.9-7.6 7"/>'),
+  help: stroke('<circle cx="10" cy="10" r="7.6"/><path d="M8 7.9a2.1 2.1 0 1 1 3 1.9c-.6.3-1 .8-1 1.4v.3"/><path d="M10 13.9v.1"/>'),
   lock: stroke('<rect x="4.5" y="9" width="11" height="8" rx="2"/><path d="M7 9V6.8a3 3 0 0 1 6 0V9"/>'),
   unlock: stroke('<rect x="4.5" y="9" width="11" height="8" rx="2"/><path d="M7 9V6.8a3 3 0 0 1 5.8-1.1"/>'),
   close: stroke('<path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/>'),
   plus: `<svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false"><defs><linearGradient id="hp-rainbow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF5A8A"/><stop offset=".25" stop-color="#FFB547"/><stop offset=".5" stop-color="#4FD18B"/><stop offset=".75" stop-color="#4AA8FF"/><stop offset="1" stop-color="#B07CFF"/></linearGradient></defs><path fill="url(#hp-rainbow)" d="M8.6 2.6a1.4 1.4 0 0 1 2.8 0v6h6a1.4 1.4 0 0 1 0 2.8h-6v6a1.4 1.4 0 0 1-2.8 0v-6h-6a1.4 1.4 0 0 1 0-2.8h6z"/></svg>`,
 } as const;
+
+export function applyFont(name: string): Promise<boolean> {
+  if (!name) return Promise.resolve(true);
+  document.documentElement.style.setProperty('--app-font', `"${name}", "Average Sans"`);
+  const family = encodeURIComponent(name);
+  const weights = [':wght@400;500;600;700', ':wght@400;700', ''];
+  return new Promise((resolve) => {
+    const load = (i: number) => {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?family=${family}${weights[i]}&display=swap`;
+      link.addEventListener('load', () => resolve(true));
+      link.addEventListener('error', () => {
+        link.remove();
+        if (i + 1 < weights.length) load(i + 1);
+        else resolve(false);
+      });
+      document.head.append(link);
+    };
+    load(0);
+  });
+}
+
+export function tourLabels(): TourLabels {
+  return {
+    next: tr('tourNext'),
+    prev: tr('tourPrev'),
+    done: tr('tourDone'),
+    skip: tr('tourSkip'),
+    count: (i, n) => tr('tourCount', { i, n }),
+  };
+}
 
 export function iconButton(id: string, icon: keyof typeof ICONS, label: string): HTMLButtonElement {
   const button = document.createElement('button');

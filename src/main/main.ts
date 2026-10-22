@@ -21,7 +21,7 @@ import { isPopupAction, Popups } from './popups';
 import { isWebUrl, parseUrl } from './routing';
 import { cleanPatch, SettingsStore } from './settings';
 import { Updater } from './updater';
-import { hauntPlusCode } from './userscript';
+import { hauntPlusCode, watchUserscript } from './userscript';
 import { assetFile, openExternal } from './util';
 import { MainWindow } from './window';
 
@@ -123,8 +123,7 @@ async function boot(): Promise<void> {
     const status = { ...shortcutStatus };
     for (const key of SHORTCUT_KEYS) {
       const acc = settings.value(key);
-      const wanted = settings.value('imagehostShortcuts') && !shortcutsPaused;
-      status[key] = wanted && !used.has(acc) && tryRegister(acc, captureActions[key]);
+      if (!shortcutsPaused) status[key] = settings.value('imagehostShortcuts') && !used.has(acc) && tryRegister(acc, captureActions[key]);
       used.add(acc);
     }
     shortcutStatus = status;
@@ -146,6 +145,8 @@ async function boot(): Promise<void> {
     if (patch.language && patch.language !== before.language) {
       locale = resolveLocale(patch.language, app.getLocale());
       tray?.setContextMenu(trayMenu(locale));
+      void mainWindow?.reloadUi();
+    } else if (patch.font !== undefined && patch.font !== before.font) {
       void mainWindow?.reloadUi();
     }
     mainWindow?.sendToOverlay(CH.settingsChanged, settings.get());
@@ -250,6 +251,7 @@ async function boot(): Promise<void> {
   const hidden = process.argv.includes('--autostart') && settings.value('closeToTray');
   await mainWindow.start(hidden);
   updater.start();
+  watchUserscript();
 }
 
 function shouldInjectHauntPlus(event: IpcMainEvent, enabled: boolean): boolean {

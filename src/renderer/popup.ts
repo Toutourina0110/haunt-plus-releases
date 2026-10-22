@@ -1,6 +1,6 @@
 import { CH } from '../shared/channels';
 import type { PopupAction, PopupState, SiteId, UiInit } from '../shared/types';
-import { applyPalette, desk, hostOf, ICONS, iconButton, LOGOS, setLocale, siteName, tr } from './common';
+import { applyFont, applyPalette, desk, hostOf, ICONS, iconButton, LOGOS, setLocale, siteName, tr } from './common';
 
 const brand = document.getElementById('brand') as HTMLImageElement;
 const nav = document.getElementById('nav')!;
@@ -65,6 +65,7 @@ function flashCopied(): void {
 async function main(): Promise<void> {
   const init = await desk.invoke<UiInit>(CH.init);
   setLocale(init.locale);
+  applyFont(init.settings.font);
   source = init.site === 'tools' ? 'tools' : 'haunt';
   applyPalette(source, init.dark);
   build();

@@ -23,8 +23,9 @@ import type {
   UiInit,
   UploadOutcome,
 } from '../shared/types';
-import { desk, setLocale, tr } from './common';
+import { applyFont, desk, setLocale, tourLabels, tr } from './common';
 import { icon, type IconName } from './hicons';
+import { endTour, rectOf, runTour, tourActive, unionOf, type TourStep } from './tour';
 
 type Section = 'overview' | 'gallery' | 'folders' | 'capture' | 'settings';
 type Kid = Node | string | null | false | undefined;
@@ -186,6 +187,7 @@ async function upload(list: File[]): Promise<void> {
 function go(next: Section): void {
   stopRecording();
   closeViewer();
+  endTour();
   section = next;
   try {
     sessionStorage.setItem('section', next);
@@ -206,6 +208,7 @@ function buildNav(): void {
     button('btn soft', tr('ihNavCapture'), () => desk.send(CH.imagehostCapture, 'area'), 'camera'),
     iconButton('btn soft icon', tr('ihDropTitle'), 'upload', () => fileInput.click()),
     iconButton('btn soft icon', tr('ihNavSettings'), 'gear', () => go('settings')),
+    iconButton('btn soft icon', tr('tourPage'), 'help', () => void startPageTour()),
   );
   fileInput.addEventListener('change', () => {
     void upload([...(fileInput.files ?? [])]);
@@ -222,7 +225,9 @@ function renderFrame(): void {
   crumbs.replaceChildren(h('li', {}, 'ImageHost'), h('li', {}, svg('chevron'), tr(label)));
   keyCard.dataset.ok = String(hasKey);
   keyCard.replaceChildren(h('small', {}, tr('imagehostKey')), h('strong', {}, tr(hasKey ? 'ihKeyOk' : 'ihKeyMissing')));
-  for (const b of topActions.querySelectorAll('button')) b.disabled = !hasKey && b.title !== tr('ihNavSettings');
+  for (const b of topActions.querySelectorAll('button')) {
+    b.disabled = !hasKey && b.title !== tr('ihNavSettings') && b.title !== tr('tourPage');
+  }
 }
 
 async function renderSection(): Promise<void> {
@@ -638,52 +643,65 @@ function showSettings(): void {
   content.append(
     h(
       'div',
-      { class: 'settings' },
+      { class: 'settings-layout' },
       h(
-        'section',
-        { class: 'card pad' },
-        h('h2', { class: 'card-title' }, tr('imagehostKey')),
-        h('p', { class: 'card-sub' }, tr('imagehostKeyHint')),
-        form,
-        h('div', { class: 'row' }, status, remove),
-      ),
-      h(
-        'section',
-        { class: 'card pad' },
-        h('h2', { class: 'card-title' }, tr('ihAfterUpload')),
+        'div',
+        { class: 'settings' },
         h(
-          'div',
-          { class: 'seg-row spaced' },
-          textBlock('imagehostLink'),
-          segmented(tr('imagehostLink'), [['page', tr('linkPage')], ['raw', tr('linkRaw')]], settings.imagehostLink, (v) =>
-            setSetting({ imagehostLink: v === 'raw' ? 'raw' : 'page' }),
+          'section',
+          { class: 'card pad' },
+          h('h2', { class: 'card-title' }, tr('imagehostKey')),
+          h('p', { class: 'card-sub' }, tr('imagehostKeyHint')),
+          form,
+          h('div', { class: 'row' }, status, remove),
+        ),
+        h(
+          'section',
+          { class: 'card pad' },
+          h('h2', { class: 'card-title' }, tr('ihAfterUpload')),
+          h(
+            'div',
+            { class: 'seg-row spaced' },
+            textBlock('imagehostLink'),
+            segmented(tr('imagehostLink'), [['page', tr('linkPage')], ['raw', tr('linkRaw')]], settings.imagehostLink, (v) =>
+              setSetting({ imagehostLink: v === 'raw' ? 'raw' : 'page' }),
+            ),
+          ),
+          h(
+            'div',
+            { class: 'row' },
+            textBlock('imagehostSaveLocal', 'imagehostSaveLocalHint'),
+            switchControl(tr('imagehostSaveLocal'), settings.imagehostSaveLocal, (on) => setSetting({ imagehostSaveLocal: on })),
           ),
         ),
         h(
-          'div',
-          { class: 'row' },
-          textBlock('imagehostSaveLocal', 'imagehostSaveLocalHint'),
-          switchControl(tr('imagehostSaveLocal'), settings.imagehostSaveLocal, (on) => setSetting({ imagehostSaveLocal: on })),
+          'section',
+          { class: 'card pad' },
+          h('h2', { class: 'card-title' }, tr('ihShortcuts')),
+          h(
+            'div',
+            { class: 'row spaced' },
+            textBlock('imagehostShortcuts', 'imagehostShortcutsHint'),
+            switchControl(tr('imagehostShortcuts'), settings.imagehostShortcuts, (on) => {
+              setSetting({ imagehostShortcuts: on });
+              renderShortcuts();
+            }),
+          ),
+          h('div', { class: 'sc-rows', id: 'sc-rows' }),
+          h('p', { class: 'hint spaced' }, tr('ihShortcutTabHint')),
         ),
       ),
-      h(
-        'section',
-        { class: 'card pad' },
-        h('h2', { class: 'card-title' }, tr('ihShortcuts')),
-        h(
-          'div',
-          { class: 'row spaced' },
-          textBlock('imagehostShortcuts', 'imagehostShortcutsHint'),
-          switchControl(tr('imagehostShortcuts'), settings.imagehostShortcuts, (on) => {
-            setSetting({ imagehostShortcuts: on });
-            renderShortcuts();
-          }),
-        ),
-        h('div', { class: 'sc-rows', id: 'sc-rows' }),
-        h('p', { class: 'hint spaced' }, tr('ihShortcutTabHint')),
-      ),
+      thanksCard(),
     ),
   );
+}
+
+const THANKS_GIF = 'https://images.haunt.gg/QH3RQn4U.gif';
+
+function thanksCard(): HTMLElement {
+  const img = h('img', { class: 'thanks-gif', src: THANKS_GIF, alt: '', decoding: 'async' });
+  img.addEventListener('error', () => img.remove());
+  return h('aside', { class: 'card thanks' }, img, h('p', { class: 'thanks-text' }, 'Thanks for using the apps <3'));
 }
 
 function lang(): string {
@@ -855,6 +873,80 @@ function drawViewer(): void {
   close.focus();
 }
 
+function on(find: string | (() => Element | null | undefined), title: StringKey, text: StringKey): TourStep {
+  const el = () => (typeof find === 'string' ? document.querySelector(find) : find()) ?? null;
+  return {
+    title: tr(title),
+    text: tr(text),
+    available: () => !!el(),
+    enter: () => el()?.scrollIntoView({ block: 'nearest' }),
+    target: () => rectOf(el()),
+  };
+}
+
+function pageSteps(): TourStep[] {
+  if (!hasKey && section !== 'settings') {
+    return [on('#nav', 'io1T', 'io1'), on('.empty .btn', 'ikT', 'ik'), on('#key-card', 'io6T', 'io6')];
+  }
+  switch (section) {
+    case 'overview':
+      return [
+        on('#nav', 'io1T', 'io1'),
+        on('.stats', 'io2T', 'io2'),
+        on(() => content.querySelector('.grid'), 'io3T', 'io3'),
+        on(() => document.querySelector('.drop-zone')?.closest('.card'), 'io4T', 'io4'),
+        on('#top-actions', 'io5T', 'io5'),
+        on('#key-card', 'io6T', 'io6'),
+      ];
+    case 'gallery': {
+      const filters = () => [...document.querySelectorAll('.toolbar > *')].slice(1);
+      return [
+        on('.toolbar .field.grow', 'ig1T', 'ig1'),
+        {
+          title: tr('ig2T'),
+          text: tr('ig2'),
+          available: () => filters().length > 0,
+          target: () => unionOf(filters()),
+        },
+        on('#g-grid .file', 'ig3T', 'ig3'),
+        on(() => (document.getElementById('g-more')?.hidden ? null : document.querySelector('#g-more button')), 'ig4T', 'ig4'),
+      ];
+    }
+    case 'folders':
+      return [on('.folder', 'if1T', 'if1')];
+    case 'capture':
+      return [
+        on('.tiles > .card:nth-child(1)', 'ic1T', 'ic1'),
+        on('.tiles > .card:nth-child(2)', 'ic2T', 'ic2'),
+        on('.tiles > .card:nth-child(3)', 'ic3T', 'ic3'),
+        on('.tiles .keys', 'ic4T', 'ic4'),
+      ];
+    case 'settings':
+      return [
+        on('.settings > .card:nth-child(1)', 'is1T', 'is1'),
+        on('.settings > .card:nth-child(2)', 'is2T', 'is2'),
+        on('.settings > .card:nth-child(3)', 'is3T', 'is3'),
+      ];
+  }
+}
+
+async function startPageTour(): Promise<void> {
+  if (tourActive()) return;
+  closeViewer();
+  stopRecording();
+  await runTour(pageSteps(), tourLabels());
+  if (!settings.tourImagesSeen) setSetting({ tourImagesSeen: true });
+}
+
+function wireFirstVisit(): void {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || settings.tourImagesSeen) return;
+    window.setTimeout(() => {
+      if (document.visibilityState === 'visible' && !settings.tourImagesSeen && !tourActive()) void startPageTour();
+    }, 1800);
+  });
+}
+
 function keyChanged(next: boolean): void {
   if (next !== hasKey) {
     stats = null;
@@ -894,6 +986,7 @@ function wireDrop(): void {
 async function main(): Promise<void> {
   const init = await desk.invoke<UiInit>(CH.init);
   setLocale(init.locale);
+  applyFont(init.settings.font);
   settings = init.settings;
   hasKey = !!init.hasKey;
   shortcutStatus = init.shortcuts ?? null;
@@ -904,6 +997,7 @@ async function main(): Promise<void> {
   }
   buildNav();
   wireDrop();
+  wireFirstVisit();
   renderFrame();
   void renderSection();
 

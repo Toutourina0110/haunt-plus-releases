@@ -1,7 +1,7 @@
 import { CH } from '../shared/channels';
 import { TABS, type ShellState, type TabId, type UiInit } from '../shared/types';
 import { keyLabel } from '../shared/shortcuts';
-import { applyPalette, desk, ICONS, iconButton, setLocale, siteName, tr } from './common';
+import { applyFont, applyPalette, desk, ICONS, iconButton, setLocale, siteName, tr } from './common';
 
 const switchEl = document.getElementById('switch')!;
 const navEl = document.getElementById('nav')!;
@@ -31,7 +31,9 @@ function build(): void {
   copy.setAttribute('aria-label', tr('copyLink'));
   copy.innerHTML = `<span class="ico ico-link">${ICONS.link}</span><span class="ico ico-check">${ICONS.check}</span>`;
   copy.addEventListener('click', () => desk.send(CH.copyLink));
-  tailEl.append(copy);
+  const help = iconButton('help', 'help', tr('tourApp'));
+  help.addEventListener('click', () => desk.send(CH.tourRequest));
+  tailEl.append(help, copy);
 
   switchEl.setAttribute('aria-label', 'haunt+');
   for (const button of siteButtons) {
@@ -78,6 +80,7 @@ function flashCopied(): void {
 async function main(): Promise<void> {
   const init = await desk.invoke<UiInit>(CH.init);
   setLocale(init.locale);
+  applyFont(init.settings.font);
   dark = init.dark;
   build();
   setActive(init.site);
