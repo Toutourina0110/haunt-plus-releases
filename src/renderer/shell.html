@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+    <title>haunt+</title>
+    <link rel="stylesheet" href="base.css" />
+    <link rel="stylesheet" href="shell.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <div class="switch" role="tablist" id="switch">
+        <span class="switch-pill" aria-hidden="true"></span>
+        <button type="button" class="switch-btn" role="tab" data-site="haunt">
+          <img src="assets/haunt.png" alt="" />
+        </button>
+        <button type="button" class="switch-btn" role="tab" data-site="tools">
+          <img src="assets/tools.svg" alt="" />
+        </button>
+        <button type="button" class="switch-btn" role="tab" data-site="images">
+          <img src="assets/imagehost.svg" alt="" />
+        </button>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="title" id="title-wrap">
+        <span class="title-app">haunt+</span>
+        <span class="title-page" id="title"></span>
+      </div>
+      <div class="tail" id="tail"></div>
+      <div class="progress" id="progress" aria-hidden="true"></div>
+    </header>
+    <script src="shell.js"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:" />
+    <title>haunt+</title>
+    <link rel="stylesheet" href="base.css" />
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <section class="splash" id="splash">
+      <div class="splash-marks">
+        <img class="splash-mark" src="assets/haunt.png" alt="" />
+        <img class="splash-mark" src="assets/tools.svg" alt="" />
+        <img class="splash-mark" src="assets/imagehost.svg" alt="" />
+      </div>
+      <p class="splash-name">haunt+</p>
+    </section>
+    <canvas class="fx" id="fx" hidden></canvas>
+    <aside class="menu" id="menu" hidden></aside>
+    <section class="settings" id="settings" hidden>
+      <div class="settings-backdrop" id="settings-backdrop"></div>
+      <div class="settings-panel" id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title"></div>
+    </section>
+    <script src="overlay.js"></script>
+  </body>
+</html>

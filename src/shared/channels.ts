@@ -1,0 +1,100 @@
+export const CH = {
+  init: 'ui:init',
+
+  switchSite: 'nav:switch',
+  nav: 'nav:action',
+  copyLink: 'link:copy',
+
+  state: 'shell:state',
+  linkCopied: 'link:copied',
+
+  overlayReady: 'overlay:ready',
+  overlayCovered: 'overlay:covered',
+  overlayDone: 'overlay:done',
+  transition: 'overlay:transition',
+  transitionPlay: 'overlay:transition-play',
+  transitionAbort: 'overlay:transition-abort',
+  menuShow: 'menu:show',
+  menuHide: 'menu:hide',
+  menuAction: 'menu:action',
+  settingsOpen: 'settings:open',
+  settingsClose: 'settings:close',
+  settingsClosed: 'settings:closed',
+  settingsSet: 'settings:set',
+  settingsChanged: 'settings:changed',
+  clearData: 'data:clear',
+  dataCleared: 'data:cleared',
+  updateCheck: 'update:check',
+  updateInstall: 'update:install',
+  updateStatus: 'update:status',
+
+  imagehostList: 'imagehost:list',
+  imagehostFolders: 'imagehost:folders',
+  imagehostUpload: 'imagehost:upload',
+  imagehostKey: 'imagehost:key',
+  imagehostCopy: 'imagehost:copy',
+  imagehostOpen: 'imagehost:open',
+  imagehostCapture: 'imagehost:capture',
+  imagehostUploaded: 'imagehost:uploaded',
+  shortcutStatus: 'shortcut:status',
+  shortcutPause: 'shortcut:pause',
+
+  captureInit: 'capture:init',
+  captureSelect: 'capture:select',
+
+  popupState: 'popup:state',
+  popupAction: 'popup:action',
+
+  theme: 'ui:theme',
+
+  hauntPlusCode: 'hauntplus:code',
+} as const;
+
+export const UI_SEND = [
+  CH.switchSite,
+  CH.nav,
+  CH.copyLink,
+  CH.overlayReady,
+  CH.overlayCovered,
+  CH.overlayDone,
+  CH.menuAction,
+  CH.settingsClosed,
+  CH.settingsSet,
+  CH.clearData,
+  CH.updateCheck,
+  CH.updateInstall,
+  CH.popupAction,
+  CH.imagehostCopy,
+  CH.imagehostOpen,
+  CH.imagehostCapture,
+  CH.captureSelect,
+  CH.shortcutPause,
+] as const;
+
+export const UI_LISTEN = [
+  CH.state,
+  CH.linkCopied,
+  CH.transition,
+  CH.transitionPlay,
+  CH.transitionAbort,
+  CH.menuShow,
+  CH.menuHide,
+  CH.settingsOpen,
+  CH.settingsClose,
+  CH.settingsChanged,
+  CH.dataCleared,
+  CH.updateStatus,
+  CH.popupState,
+  CH.theme,
+  CH.imagehostUploaded,
+  CH.shortcutStatus,
+] as const;
+
+export const UI_INVOKE = [
+  CH.init,
+  CH.imagehostList,
+  CH.imagehostFolders,
+  CH.imagehostUpload,
+  CH.imagehostKey,
+  CH.captureInit,
+] as const;

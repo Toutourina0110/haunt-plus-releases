@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' https://api.fontshare.com; font-src https://cdn.fontshare.com; img-src 'self' data: https://images.haunt.gg https://i.haunt.gg; media-src https://images.haunt.gg"
+    />
+    <title>ImageHost</title>
+    <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&amp;f[]=panchang@700&amp;display=swap" />
+    <link rel="stylesheet" href="imagehost.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sb">
+        <div class="sb-brand"><img src="assets/imagehost.svg" alt="" /><span>ImageHost</span></div>
+        <nav class="sb-nav" id="nav" aria-label="ImageHost"></nav>
+        <button type="button" class="sb-card" id="key-card"></button>
+      </aside>
+      <main class="panel" id="panel">
+        <header class="top">
+          <ol class="crumbs" id="crumbs"></ol>
+          <div class="top-actions" id="top-actions"></div>
+        </header>
+        <div class="content" id="content"></div>
+      </main>
+    </div>
+    <div class="veil" id="veil" hidden><p id="veil-text"></p></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <input type="file" id="file" multiple hidden accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime" />
+    <script src="imagehost.js"></script>
+  </body>
+</html>
