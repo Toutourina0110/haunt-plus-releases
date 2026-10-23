@@ -37,10 +37,16 @@ function record(track: RecTrack, stream: MediaStream, options: MediaRecorderOpti
 
 async function start(): Promise<void> {
   const init = await desk.invoke<RecorderInit>(CH.recInit);
-  const screen = await navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: init.fps, cursor: init.cursor ? 'always' : 'never' } as MediaTrackConstraints,
-    audio: init.systemAudio,
-  });
+  const video = { frameRate: init.fps, cursor: init.cursor ? 'always' : 'never' } as MediaTrackConstraints;
+  let screen: MediaStream;
+  let noSystemAudio = false;
+  try {
+    screen = await navigator.mediaDevices.getDisplayMedia({ video, audio: init.systemAudio });
+  } catch (err) {
+    if (!init.systemAudio) throw err;
+    screen = await navigator.mediaDevices.getDisplayMedia({ video, audio: false });
+    noSystemAudio = true;
+  }
   const settings = screen.getVideoTracks()[0]?.getSettings() ?? {};
   const pixels = (settings.width ?? 1920) * (settings.height ?? 1080);
   const bitrate = Math.min(40e6, Math.max(4e6, Math.round(pixels * init.fps * 0.1)));
@@ -68,7 +74,7 @@ async function start(): Promise<void> {
   if (mic) running.push(await record('mic', mic, { mimeType: pick(['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2']), audioBitsPerSecond: 160000 }));
   if (webcam) running.push(await record('webcam', webcam, { mimeType: pick(['video/webm;codecs=vp9', 'video/mp4;codecs=avc1']), videoBitsPerSecond: 4e6 }));
 
-  const started: RecStarted = { mimes: {}, offsets: {} };
+  const started: RecStarted = { mimes: {}, offsets: {}, noSystemAudio };
   for (const r of running) {
     started.mimes[r.track] = r.rec.mimeType;
     if (r.track !== 'screen') started.offsets[r.track] = Math.max(0, (r.startedAt - first.startedAt) / 1000);

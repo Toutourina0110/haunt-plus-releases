@@ -633,7 +633,7 @@ export class MainWindow {
       void this.switchTo(this.nextTab(this.run?.target ?? this.active));
       return true;
     }
-    if (ctrl && !input.shift && key === ',') {
+    if (ctrl && !input.shift && !input.alt && lower === 's') {
       void this.openSettings();
       return true;
     }

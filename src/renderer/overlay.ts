@@ -388,7 +388,7 @@ function shortcutList(): HTMLElement {
     ['Alt+← / →', 'scHistory'],
     ['Control+R', 'scReload'],
     ['Control+Shift+C', 'scCopy'],
-    ['Control+,', 'scSettings'],
+    ['Control+S', 'scSettings'],
     ['Control+Shift+H', 'scHauntPlus'],
   ];
   const list = document.createElement('dl');

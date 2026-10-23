@@ -60,7 +60,7 @@ export class Recorder {
       const a = this.active;
       const from = request.frame ? webContents.fromFrame(request.frame) : null;
       if (!a || !from || from !== a.page.webContents) return callback({});
-      callback({ video: a.source, audio: deps.settings.value('recordSystemAudio') ? 'loopback' : undefined });
+      callback({ video: a.source, audio: request.audioRequested && deps.settings.value('recordSystemAudio') ? 'loopback' : undefined });
     });
 
     const fromPage = (sender: Electron.WebContents) => !!this.active && sender === this.active.page.webContents;
@@ -190,6 +190,7 @@ export class Recorder {
     }
     a.started = Date.now();
     this.showBar(a);
+    if (data.noSystemAudio) this.notify(t(this.deps.locale(), 'recNoSound'), t(this.deps.locale(), 'recNoSoundBody'));
     this.followMouse(a);
     a.timers.push(setInterval(() => this.sendState(), 500));
     this.sendState();

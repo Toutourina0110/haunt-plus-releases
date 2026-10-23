@@ -291,6 +291,7 @@ export interface RecorderInit {
 export interface RecStarted {
   mimes: Partial<Record<RecTrack, string>>;
   offsets: Partial<Record<RecTrack, number>>;
+  noSystemAudio?: boolean;
 }
 
 export interface RecBarInit {

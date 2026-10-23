@@ -1,4 +1,4 @@
-# haunt+ desktop
+﻿# haunt+ desktop
 
 A Windows app that puts [haunt.gg](https://haunt.gg) and [haunt tools](https://www.haunt-tools.site) in one window. It runs the haunt+ userscript on the haunt.gg dashboard without Tampermonkey, and can upload screenshots to the haunt.gg Image Host.
 
@@ -12,7 +12,7 @@ The installer is not code-signed, so Windows SmartScreen may warn you. Click **M
 
 ## The source code
 
-Everything the installer runs is in this repository, so you can check that the app does not steal your account or your token. Comments were removed; the code is otherwise unchanged. The current source matches release 1.0.0.
+Everything the installer runs is in this repository, so you can check that the app does not steal your account or your token. Comments were removed; the code is otherwise unchanged. The current source matches release 1.0.1.
 
 | Folder | What it is |
 |---|---|

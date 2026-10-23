@@ -1,7 +1,7 @@
 {
   "name": "haunt-plus-desktop",
   "productName": "haunt+",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "haunt.gg and haunt tools in one Windows app",
   "author": "toutourina",
   "license": "UNLICENSED",
@@ -12,7 +12,7 @@
     "typecheck": "tsc -p .",
     "start": "node scripts/build.mjs --dev && electron .",
     "dist": "npm run typecheck && npm run build && electron-builder --win --publish never",
-    "release": "npm run typecheck && npm run build && electron-builder --win --publish always"
+    "release": "npm run dist && node scripts/publish.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
