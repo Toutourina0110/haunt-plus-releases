@@ -18,10 +18,12 @@ function build(): void {
   const back = iconButton('back', 'back', tr('back'));
   const forward = iconButton('forward', 'forward', tr('forward'));
   const reload = iconButton('reload', 'reload', tr('reload'));
+  const home = iconButton('home', 'home', `${tr('homePage')} (Alt+${keyLabel('Home', document.documentElement.lang)})`);
   back.addEventListener('click', () => desk.send(CH.nav, 'back'));
   forward.addEventListener('click', () => desk.send(CH.nav, 'forward'));
   reload.addEventListener('click', () => desk.send(CH.nav, 'reload'));
-  navEl.append(back, forward, reload);
+  home.addEventListener('click', () => desk.send(CH.nav, 'home'));
+  navEl.append(back, forward, reload, home);
 
   const copy = document.createElement('button');
   copy.type = 'button';

@@ -55,9 +55,9 @@ export function shortcutFromEvent(e: { ctrlKey: boolean; altKey: boolean; shiftK
 }
 
 const KEY_NAMES: Record<string, Record<string, string>> = {
-  fr: { Control: 'Ctrl', Shift: 'Maj', PrintScreen: 'Impr. écran', Space: 'Espace' },
-  de: { Control: 'Strg', Shift: 'Umschalt', PrintScreen: 'Druck', Space: 'Leertaste' },
-  'pt-BR': { Control: 'Ctrl', Shift: 'Shift', PrintScreen: 'Print Screen', Space: 'Espaço' },
+  fr: { Control: 'Ctrl', Shift: 'Maj', PrintScreen: 'Impr. écran', Space: 'Espace', Home: 'Début' },
+  de: { Control: 'Strg', Shift: 'Umschalt', PrintScreen: 'Druck', Space: 'Leertaste', Home: 'Pos1' },
+  'pt-BR': { Control: 'Ctrl', Shift: 'Shift', PrintScreen: 'Print Screen', Space: 'Espaço', Home: 'Home' },
   en: { Control: 'Ctrl', Shift: 'Shift', PrintScreen: 'Print Screen', Space: 'Space' },
 };
 const SAME_EVERYWHERE: Record<string, string> = { Super: 'Win', Up: '↑', Down: '↓', Left: '←', Right: '→' };

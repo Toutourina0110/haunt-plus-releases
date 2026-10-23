@@ -61,6 +61,7 @@ export const ICONS = {
   back: stroke('<path d="M12.5 4.5 7 10l5.5 5.5"/>'),
   forward: stroke('<path d="M7.5 4.5 13 10l-5.5 5.5"/>'),
   reload: stroke('<path d="M15.6 10.4a5.6 5.6 0 1 1-1.7-4.4"/><path d="M15.9 3.2v3.6h-3.6"/>'),
+  home: stroke('<path d="M3.5 9.2 10 3.8l6.5 5.4"/><path d="M5.2 8v8.2h9.6V8"/><path d="M8.4 16.2v-4.4h3.2v4.4"/>'),
   link: stroke('<rect x="2.2" y="6.4" width="9.4" height="7.2" rx="3.6"/><rect x="8.4" y="6.4" width="9.4" height="7.2" rx="3.6"/>'),
   check: stroke('<path d="m4.5 10.4 3.6 3.6 7.4-8"/>'),
   gear: stroke(

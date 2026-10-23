@@ -266,8 +266,8 @@ export interface CaptureRect {
   h: number;
 }
 
-export type NavAction = 'back' | 'forward' | 'reload';
-export type PopupAction = NavAction | 'copy' | 'browser';
+export type NavAction = 'back' | 'forward' | 'reload' | 'home';
+export type PopupAction = Exclude<NavAction, 'home'> | 'copy' | 'browser';
 
 export type RecordKind = 'area' | 'screen';
 export type RecTrack = 'screen' | 'mic' | 'webcam';

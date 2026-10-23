@@ -257,7 +257,7 @@ export class MainWindow {
         if (TABS.includes(data as TabId)) void this.switchTo(data as TabId);
         break;
       case CH.nav:
-        if (data === 'back' || data === 'forward' || data === 'reload') this.navigate(data);
+        if (data === 'back' || data === 'forward' || data === 'reload' || data === 'home') this.navigate(data);
         break;
       case CH.copyLink:
         this.copyLink();
@@ -406,6 +406,7 @@ export class MainWindow {
     if (action === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
     if (action === 'forward' && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
     if (action === 'reload') wc.reload();
+    if (action === 'home' && isSiteId(this.active)) load(wc, SITES[this.active].home);
   }
 
   copyLink(): void {
@@ -640,6 +641,10 @@ export class MainWindow {
       const history = target.navigationHistory;
       if (key === 'ArrowLeft' && history.canGoBack()) history.goBack();
       if (key === 'ArrowRight' && history.canGoForward()) history.goForward();
+      return true;
+    }
+    if (input.alt && !ctrl && key === 'Home' && target === this.views[this.active].webContents) {
+      this.navigate('home');
       return true;
     }
     if (key === 'F5' || (ctrl && lower === 'r')) {
