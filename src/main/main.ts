@@ -7,6 +7,7 @@ import {
   Menu,
   nativeImage,
   nativeTheme,
+  net,
   session,
   Tray,
   type IpcMainEvent,
@@ -71,9 +72,35 @@ async function boot(): Promise<void> {
   const grants = new MediaGrants(videoRoot);
   setupMediaProtocol(grants);
 
+  let notice: { message: string } | null = null;
+  let noticeShown = false;
+  const offerNotice = () => {
+    const s = updater.status;
+    if (!notice || noticeShown || !s.version || (s.state !== 'downloading' && s.state !== 'ready')) return;
+    noticeShown = !!mainWindow?.showUpdateNotice({ version: s.version, message: notice.message });
+  };
+  const readNotice = async () => {
+    try {
+      const url = process.env.HAUNT_PLUS_NOTICE_URL || 'https://www.haunt-tools.site/api/maintenance';
+      const res = await net.fetch(url, { cache: 'no-store' });
+      const data = res.ok ? ((await res.json()) as { desktop?: { message?: unknown } | null }) : null;
+      const desktop = data?.desktop;
+      notice = desktop ? { message: typeof desktop.message === 'string' ? desktop.message.slice(0, 300) : '' } : null;
+    } catch {
+      return;
+    }
+    if (!notice) return;
+    const state = updater.status.state;
+    if (state === 'downloading' || state === 'ready') offerNotice();
+    else updater.check();
+  };
+
   const updater = new Updater(
     currentLocale,
-    (status) => mainWindow?.sendToOverlay(CH.updateStatus, status),
+    (status) => {
+      mainWindow?.sendToOverlay(CH.updateStatus, status);
+      offerNotice();
+    },
     () => {
       quitting = true;
     },
@@ -326,6 +353,9 @@ async function boot(): Promise<void> {
   const hidden = process.argv.includes('--autostart') && settings.value('closeToTray');
   await mainWindow.start(hidden);
   updater.start();
+  mainWindow.win.on('show', offerNotice);
+  setTimeout(() => void readNotice(), 20_000);
+  setInterval(() => void readNotice(), 10 * 60 * 1000);
   watchUserscript();
 }
 

@@ -14,6 +14,7 @@ import type {
   TourStartPayload,
   TransitionPayload,
   UiInit,
+  UpdateNoticePayload,
   UpdateStatus,
 } from '../shared/types';
 import {
@@ -47,6 +48,8 @@ let fontMissing = false;
 let settings: Settings | null = null;
 let update: UpdateStatus = { state: 'idle' };
 let settingsOpen = false;
+let noticeOpen = false;
+let noticeGo = false;
 let menuAnim: Animation | null = null;
 let marks: Promise<Record<TabId, Mark> | null> = Promise.resolve(null);
 
@@ -595,6 +598,52 @@ function aboutGroup(): HTMLElement {
   return section;
 }
 
+function openNotice(data: UpdateNoticePayload): void {
+  update = data.update;
+  noticeOpen = true;
+  noticeGo = false;
+  const title = document.getElementById('notice-title');
+  const body = document.getElementById('notice-body');
+  if (title) title.textContent = tr('noticeTitle', { v: data.version });
+  if (body) body.textContent = data.message || tr('noticeBody');
+  document.getElementById('notice')!.hidden = false;
+  renderNotice();
+  document.getElementById('notice-go')?.focus();
+}
+
+function closeNotice(): void {
+  if (!noticeOpen) return;
+  noticeOpen = false;
+  document.getElementById('notice')!.hidden = true;
+  desk.send(CH.updateNoticeClosed);
+}
+
+function renderNotice(): void {
+  if (!noticeOpen) return;
+  const go = document.getElementById('notice-go') as HTMLButtonElement | null;
+  const later = document.getElementById('notice-later') as HTMLButtonElement | null;
+  const progress = document.getElementById('notice-progress');
+  if (!go || !later || !progress) return;
+  const ready = update.state === 'ready';
+  if (noticeGo && ready) {
+    go.textContent = tr('noticeRestart');
+    go.disabled = true;
+    later.hidden = true;
+    progress.hidden = true;
+    desk.send(CH.updateInstall);
+    return;
+  }
+  if (noticeGo && update.state === 'error') noticeGo = false;
+  const waiting = noticeGo && !ready;
+  go.textContent = tr('noticeUpdate');
+  go.disabled = waiting;
+  later.textContent = tr('noticeLater');
+  later.hidden = waiting;
+  progress.hidden = !waiting;
+  progress.textContent = update.state === 'downloading' ? tr('updateDownloading', { p: update.percent ?? 0 }) : tr('updateChecking');
+  if (waiting && update.state !== 'downloading' && update.state !== 'checking') desk.send(CH.updateCheck);
+}
+
 function renderUpdate(): void {
   const status = document.getElementById('about-status');
   const button = document.getElementById('update-btn') as HTMLButtonElement | null;
@@ -730,7 +779,14 @@ async function main(): Promise<void> {
   desk.on<UpdateStatus>(CH.updateStatus, (next) => {
     update = next;
     renderUpdate();
+    renderNotice();
   });
+  desk.on<UpdateNoticePayload>(CH.updateNotice, openNotice);
+  document.getElementById('notice-go')?.addEventListener('click', () => {
+    noticeGo = true;
+    renderNotice();
+  });
+  document.getElementById('notice-later')?.addEventListener('click', closeNotice);
   desk.on(CH.dataCleared, () => {
     const button = document.getElementById('clear-data') as HTMLButtonElement | null;
     if (!button) return;
@@ -745,6 +801,7 @@ async function main(): Promise<void> {
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && settingsOpen) void closeSettings(true);
+    else if (event.key === 'Escape' && noticeOpen && !noticeGo) closeNotice();
   });
 
   await paintSettled();

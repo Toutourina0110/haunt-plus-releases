@@ -30,6 +30,7 @@ import {
   type TourStartPayload,
   type TransitionPayload,
   type UiInit,
+  type UpdateNoticePayload,
   type UpdateStatus,
 } from '../shared/types';
 import type { Popups } from './popups';
@@ -91,6 +92,7 @@ export class MainWindow {
   private busy = true;
   private settingsOpen = false;
   private tourOn = false;
+  private noticeOpen = false;
   private recording = false;
   private edgeSince = 0;
   private outSince = 0;
@@ -270,6 +272,9 @@ export class MainWindow {
         break;
       case CH.tourDone:
         if (sender === this.overlay.webContents) this.endAppTour();
+        break;
+      case CH.updateNoticeClosed:
+        if (sender === this.overlay.webContents) this.onNoticeClosed();
         break;
     }
   }
@@ -493,7 +498,7 @@ export class MainWindow {
   }
 
   async openSettings(): Promise<void> {
-    if (this.busy || this.settingsOpen || this.tourOn) return;
+    if (this.busy || this.settingsOpen || this.tourOn || this.noticeOpen) return;
     this.show();
     this.settingsOpen = true;
     const shot = await snapshot(this.views[this.active]);
@@ -510,6 +515,22 @@ export class MainWindow {
     if (!this.settingsOpen) return;
     this.settingsOpen = false;
     this.sendOverlay(CH.settingsClose);
+  }
+
+  showUpdateNotice(notice: { version: string; message: string }): boolean {
+    if (this.busy || this.settingsOpen || this.tourOn || this.noticeOpen || !this.win.isVisible()) return false;
+    this.noticeOpen = true;
+    this.showOverlay('tour');
+    this.sendOverlay(CH.updateNotice, { ...notice, update: this.deps.updateStatus() } satisfies UpdateNoticePayload);
+    this.overlay.webContents.focus();
+    return true;
+  }
+
+  private onNoticeClosed(): void {
+    if (!this.noticeOpen) return;
+    this.noticeOpen = false;
+    this.hideOverlay();
+    this.views[this.active].webContents.focus();
   }
 
   private onSettingsClosed(): void {

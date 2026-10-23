@@ -487,6 +487,11 @@ const fr = {
   trayHintBody: 'L’app reste ici. Clic droit sur l’icône pour la quitter.',
   updateReadyTitle: 'Mise à jour prête',
   updateReadyBody: 'La version {v} sera installée à la fermeture de l’app.',
+  noticeTitle: 'haunt+ {v} est sortie',
+  noticeBody: 'Une nouvelle version de l’app est disponible.',
+  noticeUpdate: 'Mettre à jour maintenant',
+  noticeLater: 'Plus tard',
+  noticeRestart: 'Redémarrage…',
 };
 
 type Strings = typeof fr;
@@ -979,6 +984,11 @@ const en: Strings = {
   trayHintBody: 'The app stays here. Right click the icon to quit it.',
   updateReadyTitle: 'Update ready',
   updateReadyBody: 'Version {v} will be installed when the app closes.',
+  noticeTitle: 'haunt+ {v} is out',
+  noticeBody: 'A new version of the app is out.',
+  noticeUpdate: 'Update now',
+  noticeLater: 'Later',
+  noticeRestart: 'Restarting…',
 };
 
 const de: Strings = {
@@ -1468,6 +1478,11 @@ const de: Strings = {
   trayHintBody: 'Die App bleibt hier. Rechtsklick auf das Symbol, um sie zu beenden.',
   updateReadyTitle: 'Update bereit',
   updateReadyBody: 'Version {v} wird beim Schließen der App installiert.',
+  noticeTitle: 'haunt+ {v} ist da',
+  noticeBody: 'Eine neue Version der App ist da.',
+  noticeUpdate: 'Jetzt aktualisieren',
+  noticeLater: 'Später',
+  noticeRestart: 'Neustart…',
 };
 
 const ptBR: Strings = {
@@ -1957,6 +1972,11 @@ const ptBR: Strings = {
   trayHintBody: 'O app fica aqui. Clique com o botão direito no ícone para sair.',
   updateReadyTitle: 'Atualização pronta',
   updateReadyBody: 'A versão {v} será instalada quando o app fechar.',
+  noticeTitle: 'O haunt+ {v} saiu',
+  noticeBody: 'Uma nova versão do app está disponível.',
+  noticeUpdate: 'Atualizar agora',
+  noticeLater: 'Depois',
+  noticeRestart: 'Reiniciando…',
 };
 
 const TABLE: Record<Locale, Strings> = { fr, en, de, 'pt-BR': ptBR };

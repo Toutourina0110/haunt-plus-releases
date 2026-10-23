@@ -12,7 +12,7 @@ The installer is not code-signed, so Windows SmartScreen may warn you. Click **M
 
 ## The source code
 
-Everything the installer runs is in this repository, so you can check that the app does not steal your account or your token. Comments were removed; the code is otherwise unchanged. The current source matches release 1.0.1.
+Everything the installer runs is in this repository, so you can check that the app does not steal your account or your token. Comments were removed; the code is otherwise unchanged. The current source matches release 1.0.2.
 
 | Folder | What it is |
 |---|---|

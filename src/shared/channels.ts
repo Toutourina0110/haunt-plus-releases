@@ -27,6 +27,8 @@ export const CH = {
   updateCheck: 'update:check',
   updateInstall: 'update:install',
   updateStatus: 'update:status',
+  updateNotice: 'update:notice',
+  updateNoticeClosed: 'update:notice-closed',
 
   imagehostList: 'imagehost:list',
   imagehostFolders: 'imagehost:folders',
@@ -103,6 +105,7 @@ export const UI_SEND = [
   CH.shortcutPause,
   CH.tourRequest,
   CH.tourDone,
+  CH.updateNoticeClosed,
 ] as const;
 
 export const UI_LISTEN = [
@@ -118,6 +121,7 @@ export const UI_LISTEN = [
   CH.settingsChanged,
   CH.dataCleared,
   CH.updateStatus,
+  CH.updateNotice,
   CH.popupState,
   CH.theme,
   CH.imagehostUploaded,

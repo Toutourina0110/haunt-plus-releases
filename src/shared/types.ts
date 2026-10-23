@@ -138,6 +138,12 @@ export interface UpdateStatus {
   version?: string;
 }
 
+export interface UpdateNoticePayload {
+  version: string;
+  message: string;
+  update: UpdateStatus;
+}
+
 export interface PageShot {
   jpeg: Uint8Array;
   boxes: Box[];

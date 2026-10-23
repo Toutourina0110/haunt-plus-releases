@@ -447,3 +447,70 @@ kbd {
   --tour-accent: var(--accent);
   --tour-on-accent: var(--on-accent);
 }
+
+.notice {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+.notice-card {
+  width: min(460px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 28px 24px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  animation: rise 420ms var(--ease-out) both;
+}
+
+.notice-mark {
+  width: 64px;
+  height: 64px;
+}
+
+.notice-title {
+  margin: 4px 0 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.notice-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.notice-progress {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn.notice-go {
+  width: 100%;
+  margin-top: 10px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  font-size: 16px;
+}
+
+.btn.notice-later {
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
