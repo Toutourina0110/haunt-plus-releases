@@ -44,6 +44,27 @@ export const CH = {
   tourDone: 'tour:done',
 
   captureInit: 'capture:init',
+
+  annotateInit: 'annotate:init',
+  annotateOutput: 'annotate:output',
+  annotateOpenFile: 'annotate:open-file',
+  imagehostAnnotate: 'imagehost:annotate',
+
+  recInit: 'rec:init',
+  recStarted: 'rec:started',
+  recChunk: 'rec:chunk',
+  recDone: 'rec:done',
+  recFailed: 'rec:failed',
+  recCommand: 'rec:command',
+
+  recbarInit: 'recbar:init',
+  recbarAction: 'recbar:action',
+  recbarState: 'recbar:state',
+  recording: 'rec:busy',
+
+  videoInit: 'video:init',
+  videoCall: 'video:call',
+  videoExportWrite: 'video:export-write',
   captureSelect: 'capture:select',
 
   popupState: 'popup:state',
@@ -71,6 +92,13 @@ export const UI_SEND = [
   CH.imagehostCopy,
   CH.imagehostOpen,
   CH.imagehostCapture,
+  CH.imagehostAnnotate,
+  CH.recStarted,
+  CH.recChunk,
+  CH.recDone,
+  CH.recFailed,
+  CH.recbarAction,
+  CH.videoExportWrite,
   CH.captureSelect,
   CH.shortcutPause,
   CH.tourRequest,
@@ -95,6 +123,9 @@ export const UI_LISTEN = [
   CH.imagehostUploaded,
   CH.shortcutStatus,
   CH.tourStart,
+  CH.recCommand,
+  CH.recbarState,
+  CH.recording,
 ] as const;
 
 export const UI_INVOKE = [
@@ -104,4 +135,11 @@ export const UI_INVOKE = [
   CH.imagehostUpload,
   CH.imagehostKey,
   CH.captureInit,
+  CH.annotateInit,
+  CH.annotateOutput,
+  CH.annotateOpenFile,
+  CH.recInit,
+  CH.recbarInit,
+  CH.videoInit,
+  CH.videoCall,
 ] as const;

@@ -58,6 +58,8 @@ const SHORTCUT_ROWS: Array<[ShortcutKey, StringKey]> = [
   ['shortcutArea', 'scCaptureRegion'],
   ['shortcutScreen', 'scCaptureScreen'],
   ['shortcutClipboard', 'scUploadClipboard'],
+  ['shortcutRecordArea', 'scRecordArea'],
+  ['shortcutRecordScreen', 'scRecordScreen'],
 ];
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -72,6 +74,7 @@ const fileInput = byId<HTMLInputElement>('file');
 
 let settings: Settings;
 let hasKey = false;
+let busyRecording = false;
 let section: Section = 'overview';
 let renderSeq = 0;
 let toastTimer = 0;
@@ -226,7 +229,7 @@ function renderFrame(): void {
   keyCard.dataset.ok = String(hasKey);
   keyCard.replaceChildren(h('small', {}, tr('imagehostKey')), h('strong', {}, tr(hasKey ? 'ihKeyOk' : 'ihKeyMissing')));
   for (const b of topActions.querySelectorAll('button')) {
-    b.disabled = !hasKey && b.title !== tr('ihNavSettings') && b.title !== tr('tourPage');
+    b.disabled = !hasKey && b.title !== tr('ihNavSettings') && b.title !== tr('tourPage') && b.textContent !== tr('ihNavCapture');
   }
 }
 
@@ -372,6 +375,7 @@ function fileCard(item: ImageItem, index = 0, list: ImageItem[] = [item]): HTMLL
     );
   }
   if (open) actions.append(iconButton('round', tr('ihOpen'), 'external', () => desk.send(CH.imagehostOpen, open)));
+  if (item.type === 'image' && item.rawUrl) actions.append(iconButton('round', tr('ihAnnotate'), 'pen', () => annotate(item)));
   thumb.append(actions);
 
   const name = h('p', { class: 'file-name', title: item.originalName }, item.originalName, h('span', {}, ` (${formatSize(item.size)})`));
@@ -551,6 +555,10 @@ async function showFolders(mine: number): Promise<void> {
   loading.replaceWith(grid);
 }
 
+function annotate(item: ImageItem): void {
+  if (item.rawUrl) desk.send(CH.imagehostAnnotate, { kind: 'url', url: item.rawUrl });
+}
+
 function keys(...names: string[]): HTMLElement {
   const row = h('div', { class: 'keys' });
   names.forEach((k, i) => {
@@ -562,7 +570,8 @@ function keys(...names: string[]): HTMLElement {
 
 function captureTile(title: StringKey, sub: StringKey, iconName: IconName, shortcut: ShortcutKey, action: StringKey, kind: string): HTMLElement {
   const b = button('btn soft', tr(action), () => desk.send(CH.imagehostCapture, kind), iconName);
-  b.disabled = !hasKey;
+  b.disabled = !hasKey && (kind === 'screen' || kind === 'clipboard');
+  if (kind.startsWith('record') && busyRecording) b.disabled = true;
   return h(
     'div',
     { class: 'card tile' },
@@ -583,6 +592,27 @@ function showCapture(): void {
       captureTile('ihCaptureArea', 'ihCaptureAreaSub', 'camera', 'shortcutArea', 'ihCaptureAreaBtn', 'area'),
       captureTile('ihCaptureScreen', 'ihCaptureScreenSub', 'screen', 'shortcutScreen', 'ihCaptureScreenBtn', 'screen'),
       captureTile('ihClipboard', 'ihClipboardSub', 'clipboard', 'shortcutClipboard', 'ihClipboardBtn', 'clipboard'),
+      h(
+        'div',
+        { class: 'card tile' },
+        h('div', { class: 'tile-top' }, h('h2', { class: 'card-title' }, tr('ihEditorTile')), svg('pen')),
+        h('p', { class: 'card-sub' }, tr('ihEditorTileSub')),
+        button('btn soft', tr('ihEditorOpen'), () => desk.send(CH.imagehostAnnotate, { kind: 'blank' }), 'pen'),
+      ),
+    ),
+    h('div', { class: 'section-head' }),
+    h(
+      'div',
+      { class: 'tiles' },
+      captureTile('ihRecordArea', 'ihRecordAreaSub', 'video', 'shortcutRecordArea', 'ihRecordAreaBtn', 'record-area'),
+      captureTile('ihRecordScreen', 'ihRecordScreenSub', 'screen', 'shortcutRecordScreen', 'ihRecordScreenBtn', 'record-screen'),
+      h(
+        'div',
+        { class: 'card tile' },
+        h('div', { class: 'tile-top' }, h('h2', { class: 'card-title' }, tr('ihVideoEditorTile')), svg('play')),
+        h('p', { class: 'card-sub' }, tr('ihVideoEditorSub')),
+        button('btn soft', tr('ihVideoEditorBtn'), () => desk.send(CH.imagehostCapture, 'video-editor'), 'play'),
+      ),
     ),
     h('div', { class: 'section-head' }),
     dropCard(),
@@ -673,6 +703,12 @@ function showSettings(): void {
             textBlock('imagehostSaveLocal', 'imagehostSaveLocalHint'),
             switchControl(tr('imagehostSaveLocal'), settings.imagehostSaveLocal, (on) => setSetting({ imagehostSaveLocal: on })),
           ),
+          h(
+            'div',
+            { class: 'row' },
+            textBlock('ihEditAfter', 'ihEditAfterHint'),
+            switchControl(tr('ihEditAfter'), settings.imagehostEditAfterCapture, (on) => setSetting({ imagehostEditAfterCapture: on })),
+          ),
         ),
         h(
           'section',
@@ -690,8 +726,67 @@ function showSettings(): void {
           h('div', { class: 'sc-rows', id: 'sc-rows' }),
           h('p', { class: 'hint spaced' }, tr('ihShortcutTabHint')),
         ),
+        videoCard(),
       ),
       thanksCard(),
+    ),
+  );
+}
+
+function videoCard(): HTMLElement {
+  const deviceSelect = (kind: 'audioinput' | 'videoinput', key: 'recordMic' | 'recordWebcam', label: StringKey) => {
+    const select = h('select', { 'aria-label': tr(label) });
+    select.append(new Option(tr('recOff'), '', false, !settings[key]));
+    if (settings[key]) select.append(new Option(tr('recSaved'), settings[key], false, true));
+    select.addEventListener('change', () => setSetting({ [key]: select.value } as SettingsPatch));
+    void navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((devices) => {
+        const list = devices.filter((d) => d.kind === kind && d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications');
+        select.replaceChildren(new Option(tr('recOff'), '', false, !settings[key]));
+        for (const d of list) select.append(new Option(d.label || tr(label), d.deviceId, false, d.deviceId === settings[key]));
+        if (settings[key] && !list.some((d) => d.deviceId === settings[key])) select.append(new Option(tr('recMissing'), settings[key], false, true));
+      })
+      .catch(() => {});
+    return h('div', { class: 'row' }, textBlock(label), h('label', { class: 'field w-select' }, select));
+  };
+  const folder = h('p', { class: 'hint', id: 'video-folder' }, settings.videoFolder || tr('recFolderDefault'));
+  return h(
+    'section',
+    { class: 'card pad' },
+    h('h2', { class: 'card-title' }, tr('recSettings')),
+    h(
+      'div',
+      { class: 'seg-row spaced' },
+      textBlock('recFps', 'recFpsHint'),
+      segmented(tr('recFps'), [['30', '30'], ['60', '60']], String(settings.recordFps), (v) => setSetting({ recordFps: v === '30' ? 30 : 60 })),
+    ),
+    h(
+      'div',
+      { class: 'row' },
+      textBlock('recSystemAudio', 'recSystemAudioHint'),
+      switchControl(tr('recSystemAudio'), settings.recordSystemAudio, (on) => setSetting({ recordSystemAudio: on })),
+    ),
+    deviceSelect('audioinput', 'recordMic', 'recMic'),
+    deviceSelect('videoinput', 'recordWebcam', 'recWebcam'),
+    h('div', { class: 'row' }, textBlock('recCursor'), switchControl(tr('recCursor'), settings.recordCursor, (on) => setSetting({ recordCursor: on }))),
+    h(
+      'div',
+      { class: 'row' },
+      textBlock('recClicks', 'recClicksHint'),
+      switchControl(tr('recClicks'), settings.recordClicks, (on) => setSetting({ recordClicks: on })),
+    ),
+    h(
+      'div',
+      { class: 'row' },
+      textBlock('recAutoZoom', 'recAutoZoomHint'),
+      switchControl(tr('recAutoZoom'), settings.recordAutoZoom, (on) => setSetting({ recordAutoZoom: on })),
+    ),
+    h(
+      'div',
+      { class: 'row' },
+      h('div', {}, h('div', { class: 'label' }, tr('recFolder')), folder),
+      button('btn soft', tr('recFolderChange'), () => desk.send(CH.imagehostCapture, 'video-folder'), 'folder'),
     ),
   );
 }
@@ -861,6 +956,7 @@ function drawViewer(): void {
             toast(tr('ihCopied'));
           }, 'link')
         : null,
+      item.type === 'image' && item.rawUrl ? button('btn soft', tr('ihAnnotate'), () => annotate(item), 'pen') : null,
       open ? iconButton('btn soft icon', tr('ihOpen'), 'external', () => desk.send(CH.imagehostOpen, open)) : null,
       close,
     ),
@@ -1003,6 +1099,12 @@ async function main(): Promise<void> {
 
   desk.on<Settings>(CH.settingsChanged, (next) => {
     settings = next;
+    const folder = document.getElementById('video-folder');
+    if (folder) folder.textContent = settings.videoFolder || tr('recFolderDefault');
+  });
+  desk.on<boolean>(CH.recording, (busy) => {
+    busyRecording = busy;
+    if (section === 'capture') void renderSection();
   });
   desk.on<ShortcutStatus>(CH.shortcutStatus, (next) => {
     shortcutStatus = next;

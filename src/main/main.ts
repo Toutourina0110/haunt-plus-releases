@@ -1,6 +1,7 @@
 import {
   app,
   clipboard,
+  dialog,
   globalShortcut,
   ipcMain,
   Menu,
@@ -16,6 +17,10 @@ import { SHORTCUT_KEYS, type ShortcutKey, type ShortcutStatus } from '../shared/
 import { resolveLocale, t } from '../shared/i18n';
 import type { Locale, SettingsPatch } from '../shared/types';
 import { setupCapture } from './capture';
+import { ImageEditors } from './editor-image';
+import { VideoEditors } from './editor-video';
+import { MediaGrants, registerMediaScheme, setupMediaProtocol } from './media-protocol';
+import { Recorder } from './recorder';
 import { ImageHost } from './imagehost';
 import { isPopupAction, Popups } from './popups';
 import { isWebUrl, parseUrl } from './routing';
@@ -23,6 +28,7 @@ import { cleanPatch, SettingsStore } from './settings';
 import { Updater } from './updater';
 import { hauntPlusCode, watchUserscript } from './userscript';
 import { assetFile, openExternal } from './util';
+import path from 'node:path';
 import { MainWindow } from './window';
 
 const APP_ID = 'site.haunt-tools.desktop';
@@ -32,6 +38,8 @@ let quitting = false;
 let mainWindow: MainWindow | null = null;
 let popups: Popups | null = null;
 let tray: Tray | null = null;
+
+registerMediaScheme();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -55,7 +63,13 @@ async function boot(): Promise<void> {
   const currentLocale = () => locale;
   const sites = session.fromPartition('persist:sites');
   setupSiteSession(sites);
-  lockDownUiSession(session.defaultSession);
+  lockDownUiSession(session.defaultSession, (wc, permission) => {
+    if (permission !== 'media' && permission !== 'display-capture') return false;
+    return !!recorder?.isPage(wc) || (permission === 'media' && !!wc && !!mainWindow?.isImagesView(wc));
+  });
+  const videoRoot = () => settings.value('videoFolder') || path.join(app.getPath('videos'), 'haunt+');
+  const grants = new MediaGrants(videoRoot);
+  setupMediaProtocol(grants);
 
   const updater = new Updater(
     currentLocale,
@@ -70,8 +84,52 @@ async function boot(): Promise<void> {
     settings,
     onUploaded: () => mainWindow?.sendToImages(CH.imagehostUploaded),
     openImages: () => mainWindow?.openInSite('images'),
+    openEditor: (png) => editors.openPng(png),
+  });
+  const editors = new ImageEditors({
+    locale: currentLocale,
+    isDark: () => nativeTheme.shouldUseDarkColors,
+    settings,
+    hasKey: () => imagehost.hasKey(),
+    upload: (png) => imagehost.uploadEdited(png),
   });
   setupCapture();
+  const videos = new VideoEditors({
+    locale: currentLocale,
+    isDark: () => nativeTheme.shouldUseDarkColors,
+    settings,
+    hasKey: () => imagehost.hasKey(),
+    root: videoRoot,
+    grants,
+    list: (query) => imagehost.list(query),
+    upload: (name, mime, data) => imagehost.uploadFile(name, mime, data),
+  });
+  let recorder: Recorder | null = null;
+  let hiddenForRecording = false;
+  recorder = new Recorder({
+    locale: currentLocale,
+    settings,
+    videoRoot,
+    onDone: (dir) => videos.open({ recording: path.basename(dir) }),
+    onBusy: (busy) => {
+      mainWindow?.sendToImages(CH.recording, busy);
+      if (!busy && hiddenForRecording) {
+        hiddenForRecording = false;
+        mainWindow?.show();
+      }
+    },
+  });
+  const recordFromApp = async (kind: 'area' | 'screen') => {
+    if (recorder?.recording) return recorder.command('stop');
+    mainWindow?.win.hide();
+    hiddenForRecording = true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await recorder?.toggle(kind);
+    if (!recorder?.recording) {
+      hiddenForRecording = false;
+      mainWindow?.show();
+    }
+  };
 
   popups = new Popups({
     locale: currentLocale,
@@ -106,8 +164,10 @@ async function boot(): Promise<void> {
     shortcutArea: () => void imagehost.captureArea(),
     shortcutScreen: () => void imagehost.captureScreen(),
     shortcutClipboard: () => void imagehost.uploadClipboard(),
+    shortcutRecordArea: () => void recorder?.toggle('area'),
+    shortcutRecordScreen: () => void recorder?.toggle('screen'),
   };
-  let shortcutStatus: ShortcutStatus = { shortcutArea: false, shortcutScreen: false, shortcutClipboard: false };
+  let shortcutStatus = Object.fromEntries(SHORTCUT_KEYS.map((key) => [key, false])) as ShortcutStatus;
   let shortcutsPaused = false;
   const tryRegister = (acc: string, action: () => void) => {
     try {
@@ -201,6 +261,12 @@ async function boot(): Promise<void> {
           case CH.imagehostCapture:
             if (data === 'area' || data === 'screen') void captureFromApp(data);
             if (data === 'clipboard') void imagehost.uploadClipboard();
+            if (data === 'record-area' || data === 'record-screen') void recordFromApp(data === 'record-area' ? 'area' : 'screen');
+            if (data === 'video-editor') videos.open();
+            if (data === 'video-folder') void chooseVideoFolder();
+            return;
+          case CH.imagehostAnnotate:
+            if (mainWindow.isImagesView(sender)) void editors.openSource(data);
             return;
           default:
             mainWindow.onUi(channel, data, sender);
@@ -217,6 +283,15 @@ async function boot(): Promise<void> {
   ipcMain.handle(CH.imagehostFolders, (event) => (fromImages(event) ? imagehost.folders() : null));
   ipcMain.handle(CH.imagehostUpload, (event, files: unknown) => (fromImages(event) ? imagehost.uploadFiles(files) : []));
   ipcMain.handle(CH.imagehostKey, (event, key: unknown) => (fromImages(event) ? imagehost.setKey(key) : null));
+
+  const chooseVideoFolder = async () => {
+    const win = mainWindow?.win;
+    if (!win) return;
+    const res = await dialog.showOpenDialog(win, { defaultPath: videoRoot(), properties: ['openDirectory', 'createDirectory'] });
+    if (res.canceled || !res.filePaths[0]) return;
+    settings.update({ videoFolder: res.filePaths[0] });
+    mainWindow?.sendToImages(CH.settingsChanged, settings.get());
+  };
 
   const captureFromApp = async (kind: 'area' | 'screen') => {
     const win = mainWindow?.win;
@@ -273,9 +348,9 @@ function setupSiteSession(ses: Session): void {
   ses.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 }
 
-function lockDownUiSession(ses: Session): void {
-  ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
-  ses.setPermissionCheckHandler(() => false);
+function lockDownUiSession(ses: Session, allow: (wc: Electron.WebContents | null, permission: string) => boolean): void {
+  ses.setPermissionRequestHandler((wc, permission, callback) => callback(allow(wc, permission)));
+  ses.setPermissionCheckHandler((wc, permission) => allow(wc, permission));
 }
 
 function trayIcon(): Electron.NativeImage {

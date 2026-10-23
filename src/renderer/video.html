@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: haunt-media: https://images.haunt.gg https://i.haunt.gg; media-src haunt-media: https://images.haunt.gg; connect-src haunt-media:; worker-src blob:"
+    />
+    <title>haunt+</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="imagehost.css" />
+    <link rel="stylesheet" href="annotate.css" />
+    <link rel="stylesheet" href="video.css" />
+  </head>
+  <body>
+    <div class="vd">
+      <header class="ed-top" id="top"></header>
+      <aside class="vd-bin" id="bin"></aside>
+      <main class="vd-preview">
+        <div class="vd-screen" id="screen"><canvas id="canvas"></canvas></div>
+        <div class="vd-transport" id="transport"></div>
+      </main>
+      <aside class="ed-props vd-inspector" id="inspector"></aside>
+      <section class="vd-timeline">
+        <div class="vd-tl-bar" id="tl-bar"></div>
+        <div class="vd-tl" id="timeline"></div>
+      </section>
+      <div class="vd-home" id="home" hidden></div>
+    </div>
+    <div class="vd-modal" id="modal" hidden></div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script src="video.js"></script>
+  </body>
+</html>

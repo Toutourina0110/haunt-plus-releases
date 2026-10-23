@@ -1,9 +1,10 @@
-import { app, clipboard, nativeImage, net, Notification, safeStorage, type NativeImage } from 'electron';
+import { app, clipboard, ClipboardItem, nativeImage, net, Notification, safeStorage, shell, type NativeImage } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { IMAGE_ERRORS, t } from '../shared/i18n';
 import type {
+  CaptureAction,
   ImageError,
   ImageFolder,
   ImageFoldersResult,
@@ -55,6 +56,7 @@ export interface ImageHostDeps {
   settings: SettingsStore;
   onUploaded: () => void;
   openImages: () => void;
+  openEditor: (png: Buffer) => void;
 }
 
 export class ImageHost {
@@ -185,11 +187,16 @@ export class ImageHost {
   }
 
   async captureArea(): Promise<void> {
-    await this.capture(() => captureArea(t(this.deps.locale(), 'captureHint'), this.deps.settings.value('font')));
+    const l = this.deps.locale();
+    const labels = { annotate: t(l, 'ihAnnotate'), upload: t(l, 'annUpload'), copy: t(l, 'annCopy'), save: t(l, 'annSave'), record: '', cancel: t(l, 'capCancel') };
+    await this.capture(() => captureArea(t(l, 'captureHint'), this.deps.settings.value('font'), labels));
   }
 
   async captureScreen(): Promise<void> {
-    await this.capture(captureScreen);
+    await this.capture(async () => {
+      const image = await captureScreen();
+      return image ? { image, action: 'auto' } : null;
+    });
   }
 
   async uploadClipboard(): Promise<void> {
@@ -209,21 +216,36 @@ export class ImageHost {
     }
   }
 
-  private async capture(take: () => Promise<NativeImage | null>): Promise<void> {
+  private async capture(take: () => Promise<{ image: NativeImage; action: CaptureAction | 'auto' } | null>): Promise<void> {
     if (this.capturing) return;
-    if (!this.hasKey()) return this.notifyError('NO_KEY');
     this.capturing = true;
     try {
-      const image = await take();
-      if (!image) return;
+      const shot = await take();
+      if (!shot) return;
+      const { image } = shot;
+      const action = shot.action !== 'auto' ? shot.action : this.deps.settings.value('imagehostEditAfterCapture') ? 'annotate' : 'upload';
       const data = image.toPNG();
       const name = `haunt-${stamp()}.png`;
-      if (this.deps.settings.value('imagehostSaveLocal')) {
+      const locale = this.deps.locale();
+      let file = '';
+      if (action === 'save' || this.deps.settings.value('imagehostSaveLocal')) {
         const dir = path.join(app.getPath('pictures'), 'haunt+');
         await fs.promises.mkdir(dir, { recursive: true });
-        await fs.promises.writeFile(path.join(dir, name), data);
+        file = path.join(dir, name);
+        await fs.promises.writeFile(file, data);
       }
-      await this.send([{ name, mime: 'image/png', data }], image);
+      if (action === 'annotate') {
+        this.deps.openEditor(data);
+      } else if (action === 'copy') {
+        await clipboard.write([new ClipboardItem({ 'image/png': new Blob([data as BlobPart], { type: 'image/png' }) })]);
+        this.show(t(locale, 'annCopied'), t(locale, 'annotateHint'), image, () => this.deps.openEditor(data));
+      } else if (action === 'save') {
+        this.show(t(locale, 'annSaved'), t(locale, 'capSaved'), image, () => shell.showItemInFolder(file));
+      } else if (!this.hasKey()) {
+        this.notifyError('NO_KEY');
+      } else {
+        await this.send([{ name, mime: 'image/png', data }], image, data);
+      }
     } catch (err) {
       console.error('Screenshot failed:', err);
     } finally {
@@ -231,7 +253,18 @@ export class ImageHost {
     }
   }
 
-  private async send(files: Outgoing[], preview: NativeImage | null): Promise<UploadOutcome[]> {
+  async uploadFile(name: string, mime: string, data: Buffer): Promise<UploadOutcome> {
+    const [outcome] = await this.send([{ name, mime, data }], null);
+    return outcome;
+  }
+
+  async uploadEdited(png: Buffer): Promise<UploadOutcome> {
+    const name = `haunt-${stamp()}.png`;
+    const [outcome] = await this.send([{ name, mime: 'image/png', data: png }], nativeImage.createFromBuffer(png), png);
+    return outcome;
+  }
+
+  private async send(files: Outgoing[], preview: NativeImage | null, png?: Buffer): Promise<UploadOutcome[]> {
     const outcomes: UploadOutcome[] = [];
     for (const file of files) {
       try {
@@ -245,7 +278,7 @@ export class ImageHost {
       void clipboard.writeText(links.join('\n'));
       this.deps.onUploaded();
     }
-    this.notify(outcomes, preview);
+    this.notify(outcomes, preview, png);
     return outcomes;
   }
 
@@ -272,14 +305,16 @@ export class ImageHost {
     return page;
   }
 
-  private notify(outcomes: UploadOutcome[], preview: NativeImage | null): void {
+  private notify(outcomes: UploadOutcome[], preview: NativeImage | null, png?: Buffer): void {
     const done = outcomes.flatMap((o) => (o.ok ? [o.link] : []));
     const failed = outcomes.flatMap((o) => (o.ok ? [] : [o]));
     const locale = this.deps.locale();
     if (done.length) {
       const title = done.length === 1 ? t(locale, 'uploadDone') : t(locale, 'uploadDoneMany', { n: done.length });
-      const body = failed.length ? `${t(locale, 'uploadFailed')} : ${failed.map((f) => f.name).join(', ')}` : done[0];
-      this.show(title, body, preview);
+      let body = failed.length ? `${t(locale, 'uploadFailed')} : ${failed.map((f) => f.name).join(', ')}` : done[0];
+      if (png) body += `
+${t(locale, 'annotateHint')}`;
+      this.show(title, body, preview, png ? () => this.deps.openEditor(png) : undefined);
     } else if (failed.length) {
       this.notifyError(failed[0].error);
     }
@@ -289,12 +324,12 @@ export class ImageHost {
     this.show(t(this.deps.locale(), 'uploadFailed'), t(this.deps.locale(), IMAGE_ERRORS[code]), null);
   }
 
-  private show(title: string, body: string, preview: NativeImage | null): void {
+  private show(title: string, body: string, preview: NativeImage | null, onClick?: () => void): void {
     if (!Notification.isSupported()) return;
     const icon = preview && !preview.isEmpty() ? preview.resize({ width: 256 }) : assetFile('icon-tools.png');
     const note = new Notification({ title, body, icon });
     this.shown.add(note);
-    note.on('click', () => this.deps.openImages());
+    note.on('click', () => (onClick ? onClick() : this.deps.openImages()));
     note.on('close', () => this.shown.delete(note));
     note.show();
   }

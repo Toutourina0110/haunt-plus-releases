@@ -1,9 +1,10 @@
 import { BrowserWindow, desktopCapturer, ipcMain, screen, type Display, type NativeImage } from 'electron';
 import { CH } from '../shared/channels';
-import type { CaptureInit, CaptureRect } from '../shared/types';
+import type { CaptureAction, CaptureInit, CapturePick, CaptureRect, PickAction } from '../shared/types';
 import { rendererFile, uiPrefs } from './util';
 
-let picking: { win: BrowserWindow; init: CaptureInit; resolve: (rect: CaptureRect | null) => void } | null = null;
+let picking: { win: BrowserWindow; init: CaptureInit; resolve: (pick: CapturePick | null) => void } | null = null;
+const ACTIONS: PickAction[] = ['annotate', 'upload', 'copy', 'save', 'record'];
 
 export function setupCapture(): void {
   ipcMain.handle(CH.captureInit, (event) => {
@@ -11,19 +12,21 @@ export function setupCapture(): void {
     return picking.init;
   });
   ipcMain.on(CH.captureSelect, (event, data: unknown) => {
-    if (picking && event.sender === picking.win.webContents) picking.resolve(cleanRect(data));
+    if (picking && event.sender === picking.win.webContents) picking.resolve(cleanPick(data));
   });
 }
 
-function cleanRect(data: unknown): CaptureRect | null {
+function cleanPick(data: unknown): CapturePick | null {
   if (!data || typeof data !== 'object') return null;
-  const r = data as Record<string, unknown>;
+  const p = data as { rect?: Record<string, unknown>; action?: unknown };
+  const r = p.rect;
+  if (!r || !ACTIONS.includes(p.action as PickAction)) return null;
   const values = [r.x, r.y, r.w, r.h];
   if (!values.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
-  return { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number };
+  return { rect: { x: r.x as number, y: r.y as number, w: r.w as number, h: r.h as number }, action: p.action as PickAction };
 }
 
-function displayUnderMouse(): Display {
+export function displayUnderMouse(): Display {
   return screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
 }
 
@@ -43,7 +46,30 @@ export function captureScreen(): Promise<NativeImage | null> {
   return grab(displayUnderMouse());
 }
 
-export async function captureArea(hint: string, font: string): Promise<NativeImage | null> {
+export async function captureArea(
+  hint: string,
+  font: string,
+  labels: CaptureInit['labels'],
+): Promise<{ image: NativeImage; action: CaptureAction } | null> {
+  const picked = await pickArea(hint, font, labels, 'shot');
+  if (!picked || picked.action === 'record') return null;
+  const { image, display, rect } = picked;
+  const k = display.scaleFactor;
+  const size = image.getSize();
+  const x = Math.max(0, Math.min(size.width, Math.round(rect.x * k)));
+  const y = Math.max(0, Math.min(size.height, Math.round(rect.y * k)));
+  const w = Math.min(size.width - x, Math.round(rect.w * k));
+  const h = Math.min(size.height - y, Math.round(rect.h * k));
+  if (w < 2 || h < 2) return null;
+  return { image: image.crop({ x, y, width: w, height: h }), action: picked.action };
+}
+
+export async function pickArea(
+  hint: string,
+  font: string,
+  labels: CaptureInit['labels'],
+  mode: CaptureInit['mode'],
+): Promise<{ image: NativeImage; display: Display; rect: CaptureRect; action: PickAction } | null> {
   if (picking) return null;
   const display = displayUnderMouse();
   const image = await grab(display);
@@ -69,8 +95,8 @@ export async function captureArea(hint: string, font: string): Promise<NativeIma
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  const rect = await new Promise<CaptureRect | null>((resolve) => {
-    picking = { win, init: { image: 'data:image/jpeg;base64,' + image.toJPEG(92).toString('base64'), hint, font }, resolve };
+  const pick = await new Promise<CapturePick | null>((resolve) => {
+    picking = { win, init: { image: 'data:image/jpeg;base64,' + image.toJPEG(92).toString('base64'), hint, font, mode, labels }, resolve };
     win.on('closed', () => resolve(null));
     win.once('ready-to-show', () => {
       win.setBounds(display.bounds);
@@ -81,14 +107,6 @@ export async function captureArea(hint: string, font: string): Promise<NativeIma
   });
   picking = null;
   if (!win.isDestroyed()) win.destroy();
-  if (!rect) return null;
-
-  const k = display.scaleFactor;
-  const size = image.getSize();
-  const x = Math.max(0, Math.min(size.width, Math.round(rect.x * k)));
-  const y = Math.max(0, Math.min(size.height, Math.round(rect.y * k)));
-  const w = Math.min(size.width - x, Math.round(rect.w * k));
-  const h = Math.min(size.height - y, Math.round(rect.h * k));
-  if (w < 2 || h < 2) return null;
-  return image.crop({ x, y, width: w, height: h });
+  if (!pick) return null;
+  return { image, display, rect: pick.rect, action: pick.action };
 }

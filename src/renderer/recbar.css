@@ -1,0 +1,81 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--app-font, 'Average Sans'), 'Segoe UI Variable Text', 'Segoe UI', sans-serif;
+  user-select: none;
+}
+
+.recbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 6px 0 14px;
+  border: 1px solid #1c1c1c;
+  border-radius: 16px;
+  background: #0e0e0e;
+  color: #fafafa;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e5484d;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+.recbar.paused .dot {
+  background: #808080;
+  animation: none;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.time {
+  min-width: 56px;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.grip {
+  flex: 1;
+  align-self: stretch;
+  -webkit-app-region: drag;
+}
+
+.b {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: #fafafa;
+  cursor: pointer;
+}
+
+.b:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.b.stop {
+  color: #e5484d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

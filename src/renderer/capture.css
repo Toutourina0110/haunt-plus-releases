@@ -37,8 +37,8 @@ body {
 
 .size {
   position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
+  left: 0;
+  bottom: calc(100% + 6px);
   padding: 2px 6px;
   border-radius: 4px;
   background: rgba(16, 16, 20, 0.85);
@@ -65,4 +65,99 @@ body {
 
 body.drawing .hint {
   opacity: 0;
+}
+
+body.chosen .hint {
+  opacity: 0;
+}
+
+body.chosen .sel {
+  cursor: move;
+}
+
+.handle {
+  display: none;
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 2px solid #8079c9;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+body.chosen .handle {
+  display: block;
+}
+
+.handle.nw { left: 0; top: 0; cursor: nwse-resize; }
+.handle.n { left: 50%; top: 0; cursor: ns-resize; }
+.handle.ne { left: 100%; top: 0; cursor: nesw-resize; }
+.handle.e { left: 100%; top: 50%; cursor: ew-resize; }
+.handle.se { left: 100%; top: 100%; cursor: nwse-resize; }
+.handle.s { left: 50%; top: 100%; cursor: ns-resize; }
+.handle.sw { left: 0; top: 100%; cursor: nesw-resize; }
+.handle.w { left: 0; top: 50%; cursor: ew-resize; }
+
+.bar {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #1c1c1c;
+  border-radius: 16px;
+  background: #0e0e0e;
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.7);
+  cursor: default;
+}
+
+.act {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: none;
+  color: #fafafa;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.act:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.act.primary {
+  background: #8079c9;
+  color: #0c0a1f;
+}
+
+.act.primary:hover {
+  background: #8f89d3;
+}
+
+.act.icon {
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+  color: #a0a0a0;
+}
+
+.act:focus-visible {
+  outline: 2px solid #8079c9;
+  outline-offset: 1px;
+}
+
+.act.rec {
+  background: #e5484d;
+  color: #ffffff;
+}
+
+.act.rec:hover {
+  background: #ec5d62;
 }

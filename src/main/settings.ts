@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_SHORTCUTS, isValidShortcut } from '../shared/shortcuts';
+import { DEFAULT_SHORTCUTS, isValidShortcut, SHORTCUT_KEYS } from '../shared/shortcuts';
 import { EDITABLE_KEYS, type Settings, type SettingsPatch, type WindowBounds } from '../shared/types';
 
 const DEFAULTS: Settings = {
@@ -15,6 +15,15 @@ const DEFAULTS: Settings = {
   font: '',
   imagehostLink: 'page',
   imagehostSaveLocal: false,
+  imagehostEditAfterCapture: false,
+  recordFps: 60,
+  recordSystemAudio: true,
+  recordMic: '',
+  recordWebcam: '',
+  recordCursor: true,
+  recordClicks: false,
+  recordAutoZoom: false,
+  videoFolder: '',
   imagehostShortcuts: true,
   ...DEFAULT_SHORTCUTS,
   tourAppSeen: false,
@@ -45,7 +54,12 @@ const BOOLEANS: Array<keyof Settings> = [
   'trayHintShown',
   'maximized',
   'imagehostSaveLocal',
+  'imagehostEditAfterCapture',
   'imagehostShortcuts',
+  'recordSystemAudio',
+  'recordCursor',
+  'recordClicks',
+  'recordAutoZoom',
   'tourAppSeen',
   'tourImagesSeen',
 ];
@@ -68,8 +82,14 @@ function clean(input: unknown, allowed: readonly (keyof Settings)[]): Partial<Se
       if (typeof value === 'string' && options.includes(value)) out[key] = value;
     } else if (BOOLEANS.includes(key)) {
       if (typeof value === 'boolean') out[key] = value;
-    } else if (key === 'shortcutArea' || key === 'shortcutScreen' || key === 'shortcutClipboard') {
+    } else if ((SHORTCUT_KEYS as readonly string[]).includes(key)) {
       if (isValidShortcut(value)) out[key] = value;
+    } else if (key === 'videoFolder') {
+      if (typeof value === 'string' && value.length < 1000) out[key] = value;
+    } else if (key === 'recordFps') {
+      if (value === 30 || value === 60) out[key] = value;
+    } else if (key === 'recordMic' || key === 'recordWebcam') {
+      if (typeof value === 'string' && /^[\w+/=.-]{0,200}$/.test(value)) out[key] = value;
     } else if (key === 'font') {
       if (typeof value === 'string' && /^[A-Za-z0-9 ]{0,60}$/.test(value)) out[key] = value.trim().replace(/ +/g, ' ');
     } else if (key === 'bounds') {

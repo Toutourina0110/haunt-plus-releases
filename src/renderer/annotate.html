@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:"
+    />
+    <title>haunt+</title>
+    <link rel="stylesheet" href="fonts.css" />
+    <link rel="stylesheet" href="imagehost.css" />
+    <link rel="stylesheet" href="annotate.css" />
+  </head>
+  <body>
+    <div class="ed">
+      <header class="ed-top" id="top"></header>
+      <nav class="ed-tools" id="tools"></nav>
+      <main class="ed-stage" id="stage">
+        <canvas id="canvas"></canvas>
+        <textarea id="text-edit" class="ed-text" spellcheck="false" hidden></textarea>
+        <div class="ed-empty" id="empty" hidden></div>
+      </main>
+      <aside class="ed-props" id="props"></aside>
+    </div>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script src="annotate.js"></script>
+  </body>
+</html>

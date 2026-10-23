@@ -1,3 +1,5 @@
+import type { SHORTCUT_KEYS } from './shortcuts';
+
 export type SiteId = 'haunt' | 'tools';
 export type TabId = SiteId | 'images';
 export const TABS: readonly TabId[] = ['haunt', 'tools', 'images'];
@@ -34,10 +36,21 @@ export interface Settings {
   font: string;
   imagehostLink: LinkKind;
   imagehostSaveLocal: boolean;
+  imagehostEditAfterCapture: boolean;
   imagehostShortcuts: boolean;
   shortcutArea: string;
   shortcutScreen: string;
   shortcutClipboard: string;
+  shortcutRecordArea: string;
+  shortcutRecordScreen: string;
+  recordFps: 30 | 60;
+  recordSystemAudio: boolean;
+  recordMic: string;
+  recordWebcam: string;
+  recordCursor: boolean;
+  recordClicks: boolean;
+  recordAutoZoom: boolean;
+  videoFolder: string;
   tourAppSeen: boolean;
   tourImagesSeen: boolean;
   externalLinks: LinkTarget;
@@ -58,10 +71,20 @@ export const EDITABLE_KEYS = [
   'font',
   'imagehostLink',
   'imagehostSaveLocal',
+  'imagehostEditAfterCapture',
   'imagehostShortcuts',
   'shortcutArea',
   'shortcutScreen',
   'shortcutClipboard',
+  'shortcutRecordArea',
+  'shortcutRecordScreen',
+  'recordFps',
+  'recordSystemAudio',
+  'recordMic',
+  'recordWebcam',
+  'recordCursor',
+  'recordClicks',
+  'recordAutoZoom',
   'tourAppSeen',
   'tourImagesSeen',
   'externalLinks',
@@ -81,7 +104,7 @@ export interface UiInit {
   version: string;
   marks?: Record<TabId, LogoFile>;
   hasKey?: boolean;
-  shortcuts?: Record<'shortcutArea' | 'shortcutScreen' | 'shortcutClipboard', boolean>;
+  shortcuts?: Record<(typeof SHORTCUT_KEYS)[number], boolean>;
 }
 
 export interface LogoFile {
@@ -207,10 +230,33 @@ export interface KeyResult {
   error?: ImageError;
 }
 
+export interface AnnotateInit {
+  image: string | null;
+  locale: Locale;
+  dark: boolean;
+  font: string;
+  hasKey: boolean;
+}
+
+export type AnnotateAction = 'upload' | 'save' | 'copy';
+export type AnnotateResult = { ok: true; link?: string } | { ok: false; error?: ImageError };
+
+export type AnnotateSource = { kind: 'blank' } | { kind: 'url'; url: string };
+
+export type CaptureAction = 'annotate' | 'upload' | 'copy' | 'save';
+export type PickAction = CaptureAction | 'record';
+
 export interface CaptureInit {
   image: string;
   hint: string;
   font: string;
+  mode: 'shot' | 'video';
+  labels: Record<PickAction | 'cancel', string>;
+}
+
+export interface CapturePick {
+  rect: CaptureRect;
+  action: PickAction;
 }
 
 export interface CaptureRect {
@@ -222,3 +268,214 @@ export interface CaptureRect {
 
 export type NavAction = 'back' | 'forward' | 'reload';
 export type PopupAction = NavAction | 'copy' | 'browser';
+
+export type RecordKind = 'area' | 'screen';
+export type RecTrack = 'screen' | 'mic' | 'webcam';
+export type RecCommand = 'pause' | 'resume' | 'stop' | 'cancel';
+
+export interface NormRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface RecorderInit {
+  fps: 30 | 60;
+  cursor: boolean;
+  systemAudio: boolean;
+  micId: string;
+  webcamId: string;
+}
+
+export interface RecStarted {
+  mimes: Partial<Record<RecTrack, string>>;
+  offsets: Partial<Record<RecTrack, number>>;
+}
+
+export interface RecBarInit {
+  locale: Locale;
+  font: string;
+}
+
+export interface RecBarState {
+  paused: boolean;
+  elapsed: number;
+}
+
+export interface RecordingSession {
+  version: 1;
+  created: string;
+  fps: number;
+  display: { width: number; height: number; scale: number };
+  area: NormRect | null;
+  files: Partial<Record<RecTrack, string>>;
+  offsets: Partial<Record<RecTrack, number>>;
+  duration: number;
+  cursor: string | null;
+}
+
+export interface CursorLog {
+  samples: number[];
+  clicks: number[];
+}
+
+export interface MediaItem {
+  id: string;
+  path: string;
+  url: string;
+  name: string;
+  kind: 'video' | 'audio' | 'image';
+  duration: number;
+  width: number;
+  height: number;
+  hasAudio: boolean;
+  crop: NormRect | null;
+  session: string | null;
+  clicks?: number[];
+}
+
+export type ClipType = 'media' | 'text' | 'shape' | 'effect';
+export type AnimProp = 'x' | 'y' | 'scale' | 'rotation' | 'opacity' | 'volume' | 'brightness' | 'contrast' | 'saturation' | 'grayscale';
+export type Ease = 'linear' | 'smooth' | 'in' | 'out' | 'hold';
+
+export interface Keyframe {
+  t: number;
+  v: number;
+  ease: Ease;
+}
+
+export type TransitionKind = 'none' | 'fade' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom';
+
+export interface ClipTransition {
+  kind: TransitionKind;
+  duration: number;
+}
+
+export interface ZoomSegment {
+  t: number;
+  d: number;
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export interface TextStyle {
+  content: string;
+  size: number;
+  color: string;
+  background: string | null;
+  bold: boolean;
+  align: 'left' | 'center' | 'right';
+}
+
+export interface ShapeStyle {
+  kind: 'rect' | 'ellipse' | 'arrow';
+  color: string;
+  width: number;
+  fill: boolean;
+}
+
+export interface EffectStyle {
+  kind: 'blur' | 'pixel';
+  strength: number;
+}
+
+export interface FrameStyle {
+  padding: number;
+  radius: number;
+  shadow: boolean;
+}
+
+export interface ClipFilters {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  grayscale: number;
+}
+
+export interface Clip {
+  id: string;
+  mediaId: string;
+  start: number;
+  in: number;
+  out: number;
+  speed: number;
+  volume: number;
+  fit: 'contain' | 'cover' | 'fill';
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  type?: ClipType;
+  rotation?: number;
+  w?: number;
+  h?: number;
+  keyframes?: Partial<Record<AnimProp, Keyframe[]>>;
+  filters?: ClipFilters;
+  fadeIn?: number;
+  fadeOut?: number;
+  enter?: ClipTransition;
+  exit?: ClipTransition;
+  mask?: 'none' | 'circle' | 'rounded';
+  frame?: FrameStyle | null;
+  zooms?: ZoomSegment[];
+  clicks?: boolean;
+  text?: TextStyle;
+  shape?: ShapeStyle;
+  effect?: EffectStyle;
+}
+
+export interface Track {
+  id: string;
+  kind: 'video' | 'audio';
+  clips: Clip[];
+  muted: boolean;
+}
+
+export interface Project {
+  version: 1;
+  id: string;
+  name: string;
+  created: string;
+  updated: string;
+  width: number;
+  height: number;
+  fps: 30 | 60;
+  background: string;
+  background2?: string | null;
+  media: MediaItem[];
+  tracks: Track[];
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  updated: string;
+}
+
+export interface RecordingSummary {
+  dir: string;
+  created: string;
+  duration: number;
+}
+
+export interface SessionMedia {
+  dir: string;
+  session: RecordingSession;
+  files: Partial<Record<RecTrack, { path: string; url: string }>>;
+  cursor: CursorLog | null;
+}
+
+export interface VideoInit {
+  locale: Locale;
+  dark: boolean;
+  font: string;
+  hasKey: boolean;
+  project: Project | null;
+  recording: SessionMedia | null;
+  recent: ProjectSummary[];
+  autoZoom: boolean;
+}
+
+export type VideoOutputAction = 'upload' | 'save' | 'copy' | 'folder';

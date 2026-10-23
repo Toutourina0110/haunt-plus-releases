@@ -17,7 +17,7 @@ await build({
   ...common,
   platform: 'node',
   format: 'cjs',
-  external: ['electron', 'electron-updater'],
+  external: ['electron', 'electron-updater', 'koffi'],
   entryPoints: {
     main: 'src/main/main.ts',
     'preload-ui': 'src/preload/ui.ts',
@@ -36,12 +36,16 @@ await build({
     popup: 'src/renderer/popup.ts',
     capture: 'src/renderer/capture.ts',
     imagehost: 'src/renderer/imagehost.ts',
+    annotate: 'src/renderer/annotate.ts',
+    recorder: 'src/renderer/recorder.ts',
+    recbar: 'src/renderer/recbar.ts',
+    video: 'src/renderer/video/main.ts',
   },
   outdir: 'dist/renderer',
 });
 
 await mkdir('dist/renderer/assets', { recursive: true });
-for (const file of ['shell.html', 'overlay.html', 'popup.html', 'capture.html', 'imagehost.html', 'base.css', 'shell.css', 'overlay.css', 'popup.css', 'capture.css', 'imagehost.css', 'tour.css', 'fonts.css']) {
+for (const file of ['shell.html', 'overlay.html', 'popup.html', 'capture.html', 'imagehost.html', 'annotate.html', 'recorder.html', 'recbar.html', 'video.html', 'base.css', 'shell.css', 'overlay.css', 'popup.css', 'capture.css', 'imagehost.css', 'tour.css', 'fonts.css', 'annotate.css', 'recbar.css', 'video.css']) {
   await cp(`src/renderer/${file}`, `dist/renderer/${file}`);
 }
 await cp('src/renderer/assets', 'dist/renderer/assets', { recursive: true });
