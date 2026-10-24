@@ -1855,10 +1855,14 @@ ${colorRow('error', 'Error', cfg.error)}
     let c4cMode = null;
     let scanToken = 0;
     let scanBusy = false;
+    let pendingProfile = null;
+    let lastCheck = 0;
+    let c4cCheck = null;
 
     function closeC4C() {
         scanToken++;
         scanBusy = false;
+        c4cCheck = null;
         if (c4cHost) {
             c4cHost.remove();
             c4cHost = null;
@@ -1879,13 +1883,16 @@ ${colorRow('error', 'Error', cfg.error)}
     }
 
     const IN_APP = !!window.__hauntPlusMenu;
+    const CHECK_GAP = 15000;
     let besideWin = null;
     let besideTimer = 0;
 
-    function rescan() {
-        if (!c4cHost || scanBusy) return;
-        const btn = c4cHost.shadowRoot.getElementById('scan');
-        if (btn && !btn.disabled) btn.click();
+    function profileClosed() {
+        const user = pendingProfile;
+        pendingProfile = null;
+        if (!user || !c4cCheck || scanBusy || Date.now() - lastCheck < CHECK_GAP) return;
+        lastCheck = Date.now();
+        c4cCheck(user);
     }
 
     function openBeside(profileUrl) {
@@ -1900,21 +1907,23 @@ ${colorRow('error', 'Error', cfg.error)}
             if (besideWin && !besideWin.closed) return;
             clearInterval(besideTimer);
             besideWin = null;
-            rescan();
+            profileClosed();
         }, 500);
     }
 
     function onPanelLink(e) {
         const a = e.target.closest && e.target.closest('a[href]');
-        if (!a || IN_APP || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+        if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
         let profile;
         try { profile = new URL(a.href); } catch (err) { return; }
         if (profile.origin !== 'https://haunt.gg') return;
+        try { pendingProfile = decodeURIComponent(profile.pathname.slice(1)).toLowerCase(); } catch (err) { return; }
+        if (IN_APP) return;
         e.preventDefault();
         openBeside(profile.href);
     }
 
-    window.addEventListener('hauntplus:popup-closed', rescan);
+    window.addEventListener('hauntplus:popup-closed', profileClosed);
 
     function esc(s) {
         return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1969,6 +1978,39 @@ ${HT_CSS}
         $('close').addEventListener('click', closeC4C);
 
         let lastResult = null;
+
+        c4cCheck = async user => {
+            if (scanBusy || !lastResult) return;
+            const card = findCard(mode.title);
+            const tabs = card ? commentTabs(card) : {};
+            if (!tabs.received || !tabs.given) return;
+            const mine = scanToken;
+            scanBusy = true;
+            $('scan').disabled = true;
+            $('status').textContent = `Checking ${user}...`;
+            let note;
+            try {
+                if (tabs.given.getAttribute('data-state') === 'active') await openTab(tabs.received, card, 'Received');
+                await openTab(tabs.given, card, 'Given');
+                if (mine !== scanToken) return;
+                if (harvestUsers(card, mode.likedOnly).has(user)) {
+                    lastResult.youOwe = (lastResult.youOwe || []).filter(u => u !== user);
+                    lastResult.youOweAlias = (lastResult.youOweAlias || []).filter(u => u !== user);
+                    renderResult(root, lastResult);
+                    note = `${user}: given back, out of "You owe them".`;
+                } else {
+                    note = `${user}: nothing given yet. Scan again later to be sure.`;
+                }
+            } catch (e) {
+                note = 'Check failed: ' + e.message;
+            } finally {
+                if (mine === scanToken) {
+                    scanBusy = false;
+                    $('scan').disabled = false;
+                }
+            }
+            if (mine === scanToken) $('status').textContent = note;
+        };
 
         $('scan').addEventListener('click', async () => {
             if (scanBusy) return;
