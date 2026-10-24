@@ -1,5 +1,5 @@
 import { CH } from '../shared/channels';
-import type { CaptureInit, CaptureRect, PickAction } from '../shared/types';
+import type { CaptureDown, CaptureInit, CaptureRect, CaptureSync, PickAction } from '../shared/types';
 import { applyFont, desk } from './common';
 import { icon } from './hicons';
 
@@ -10,14 +10,10 @@ const size = document.getElementById('size')!;
 const hint = document.getElementById('hint')!;
 const bar = document.getElementById('bar')!;
 
-type Drag =
-  | { mode: 'draw'; x: number; y: number }
-  | { mode: 'move'; x: number; y: number; start: CaptureRect }
-  | { mode: 'resize'; handle: string; start: CaptureRect };
-
-let drag: Drag | null = null;
-let rect: CaptureRect = { x: 0, y: 0, w: 0, h: 0 };
+let origin = { x: 0, y: 0 };
+let rect: CaptureRect | null = null;
 let chosen = false;
+let dragging = false;
 let sent = false;
 let mode: CaptureInit['mode'] = 'shot';
 
@@ -33,118 +29,71 @@ const ICONS: Record<PickAction | 'cancel', string> = {
 };
 const KEYS: Record<PickAction | 'cancel', string> = { annotate: 'A', upload: 'Enter', copy: 'Ctrl+C', save: 'Ctrl+S', record: 'Enter', cancel: 'Esc' };
 
-function finish(action: PickAction | null, area = rect): void {
+function finish(action: PickAction | null, whole = false, all = false): void {
   if (sent) return;
   sent = true;
-  desk.send(CH.captureSelect, action ? { rect: area, action } : null);
+  desk.send(CH.captureSelect, action ? { action, whole, all } : null);
 }
 
-function draw(): void {
+function draw(barHere: boolean): void {
+  const seen = !!rect && rect.x < window.innerWidth && rect.x + rect.w > 0 && rect.y < window.innerHeight && rect.y + rect.h > 0;
+  document.body.classList.toggle('drawing', dragging || (!!rect && !chosen));
+  document.body.classList.toggle('chosen', chosen);
+  sel.hidden = !seen;
+  dim.hidden = seen;
+  bar.hidden = !(chosen && barHere);
+  if (!rect) return;
   sel.style.left = `${rect.x}px`;
   sel.style.top = `${rect.y}px`;
   sel.style.width = `${rect.w}px`;
   sel.style.height = `${rect.h}px`;
   const k = window.devicePixelRatio || 1;
   size.textContent = `${Math.round(rect.w * k)} × ${Math.round(rect.h * k)}`;
-  if (chosen) placeBar();
+  if (!bar.hidden) placeBar(rect);
 }
 
-function placeBar(): void {
+function placeBar(r: CaptureRect): void {
   const gap = 8;
   const bw = bar.offsetWidth;
   const bh = bar.offsetHeight;
-  let top = rect.y + rect.h + gap;
-  if (top + bh > window.innerHeight - gap) top = rect.y - bh - gap;
-  if (top < gap) top = rect.y + rect.h - bh - gap;
-  const left = Math.min(window.innerWidth - bw - gap, Math.max(gap, rect.x + rect.w - bw));
+  let top = r.y + r.h + gap;
+  if (top + bh > window.innerHeight - gap) top = r.y - bh - gap;
+  if (top < gap) top = Math.min(r.y + r.h, window.innerHeight) - bh - gap;
+  const left = Math.min(window.innerWidth - bw - gap, Math.max(gap, Math.min(r.x + r.w, window.innerWidth) - bw));
   bar.style.left = `${left}px`;
   bar.style.top = `${Math.max(gap, top)}px`;
 }
 
-function choose(): void {
-  chosen = true;
-  document.body.classList.add('chosen');
-  bar.hidden = false;
-  draw();
-}
-
-function reset(): void {
-  chosen = false;
-  document.body.classList.remove('drawing', 'chosen');
-  bar.hidden = true;
-  sel.hidden = true;
-  dim.hidden = false;
-}
-
 function inside(x: number, y: number): boolean {
-  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
-}
-
-function clampRect(r: CaptureRect): CaptureRect {
-  const w = Math.min(r.w, window.innerWidth);
-  const h = Math.min(r.h, window.innerHeight);
-  return { x: Math.max(0, Math.min(window.innerWidth - w, r.x)), y: Math.max(0, Math.min(window.innerHeight - h, r.y)), w, h };
+  return !!rect && x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
 }
 
 document.addEventListener('pointerdown', (event) => {
   if (event.button !== 0 || (event.target as Element).closest('#bar')) return;
+  if (mode === 'screen') return finish('upload', true);
   document.documentElement.setPointerCapture(event.pointerId);
   const handle = (event.target as HTMLElement).dataset.handle;
-  if (chosen && handle) {
-    drag = { mode: 'resize', handle, start: { ...rect } };
-    return;
-  }
-  if (chosen && inside(event.clientX, event.clientY)) {
-    drag = { mode: 'move', x: event.clientX, y: event.clientY, start: { ...rect } };
-    return;
-  }
-  chosen = false;
-  bar.hidden = true;
-  document.body.classList.remove('chosen');
-  drag = { mode: 'draw', x: event.clientX, y: event.clientY };
-  rect = { x: event.clientX, y: event.clientY, w: 0, h: 0 };
-  document.body.classList.add('drawing');
-  dim.hidden = true;
-  sel.hidden = false;
-  draw();
-});
-
-document.addEventListener('pointermove', (event) => {
-  if (!drag) return;
-  const x = event.clientX;
-  const y = event.clientY;
-  if (drag.mode === 'draw') {
-    rect = { x: Math.min(drag.x, x), y: Math.min(drag.y, y), w: Math.abs(x - drag.x), h: Math.abs(y - drag.y) };
-  } else if (drag.mode === 'move') {
-    rect = clampRect({ ...drag.start, x: drag.start.x + x - drag.x, y: drag.start.y + y - drag.y });
-  } else {
-    const s = drag.start;
-    let x1 = s.x;
-    let y1 = s.y;
-    let x2 = s.x + s.w;
-    let y2 = s.y + s.h;
-    if (drag.handle.includes('w')) x1 = x;
-    if (drag.handle.includes('e')) x2 = x;
-    if (drag.handle.includes('n')) y1 = y;
-    if (drag.handle.includes('s')) y2 = y;
-    rect = { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
-  }
-  draw();
+  let down: CaptureDown = { mode: 'draw' };
+  if (chosen && handle) down = { mode: 'resize', handle };
+  else if (chosen && inside(event.clientX, event.clientY)) down = { mode: 'move' };
+  dragging = true;
+  desk.send(CH.captureDown, down);
 });
 
 document.addEventListener('pointerup', () => {
-  if (!drag) return;
-  drag = null;
-  if (rect.w >= 4 && rect.h >= 4) return choose();
-  reset();
+  dragging = false;
+  desk.send(CH.captureUp);
 });
 
 document.addEventListener('keydown', (event) => {
   const ctrl = event.ctrlKey || event.metaKey;
   if (event.key === 'Escape') return finish(null);
+  if (mode === 'screen') {
+    if (event.key === 'Enter') finish('upload', true);
+    return;
+  }
   if (event.key === 'Enter') {
-    const main: PickAction = mode === 'video' ? 'record' : 'upload';
-    return chosen ? finish(main) : finish(main, { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
+    return finish(mode === 'video' ? 'record' : 'upload', !chosen);
   }
   if (!chosen || mode === 'video') return;
   if (ctrl && event.key.toLowerCase() === 'c') finish('copy');
@@ -158,6 +107,26 @@ document.addEventListener('contextmenu', (event) => {
   event.preventDefault();
   finish(null);
 });
+
+function buildScreenBar(labels: CaptureInit['labels'], screens: NonNullable<CaptureInit['screens']>): void {
+  const buttons: Array<[string, string, () => void]> = [
+    ['act primary', screens.here, () => finish('upload', true)],
+    ['act', screens.all, () => finish('upload', true, true)],
+    ['act icon', labels.cancel, () => finish(null)],
+  ];
+  for (const [cls, label, run] of buttons) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.setAttribute('aria-label', label);
+    if (cls === 'act icon') b.innerHTML = ICONS.cancel;
+    else b.textContent = label;
+    b.addEventListener('click', run);
+    bar.append(b);
+  }
+  document.body.classList.add('screen-mode');
+  bar.hidden = false;
+}
 
 function buildBar(labels: CaptureInit['labels']): void {
   const actions: Array<PickAction | 'cancel'> = mode === 'video' ? ['record', 'cancel'] : ['annotate', 'upload', 'copy', 'save', 'cancel'];
@@ -184,9 +153,18 @@ async function main(): Promise<void> {
   const init = await desk.invoke<CaptureInit>(CH.captureInit);
   hint.textContent = init.hint;
   mode = init.mode;
-  buildBar(init.labels);
+  origin = init.origin;
+  if (mode === 'screen' && init.screens) buildScreenBar(init.labels, init.screens);
+  else buildBar(init.labels);
   applyFont(init.font);
   shot.src = init.image;
 }
+
+desk.on<CaptureSync>(CH.captureSync, (state) => {
+  if (sent || mode === 'screen') return;
+  rect = state.rect && { ...state.rect, x: state.rect.x - origin.x, y: state.rect.y - origin.y };
+  chosen = state.chosen;
+  draw(state.bar);
+});
 
 void main();

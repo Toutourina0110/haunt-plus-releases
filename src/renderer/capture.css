@@ -161,3 +161,24 @@ body.chosen .handle {
 .act.rec:hover {
   background: #ec5d62;
 }
+
+body.screen-mode {
+  cursor: pointer;
+}
+
+body.screen-mode .dim {
+  background: rgba(0, 0, 0, 0.25);
+  transition: background-color 120ms ease;
+}
+
+body.screen-mode:hover .dim {
+  background: transparent;
+  box-shadow: inset 0 0 0 4px #8079c9;
+}
+
+body.screen-mode .bar {
+  left: 50% !important;
+  top: auto !important;
+  bottom: 28px;
+  transform: translateX(-50%);
+}

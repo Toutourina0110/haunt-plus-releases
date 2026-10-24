@@ -1,4 +1,4 @@
-import { BrowserWindow, desktopCapturer, ipcMain, Notification, screen, session, webContents, type Display, type DesktopCapturerSource } from 'electron';
+import { BrowserWindow, desktopCapturer, ipcMain, Notification, screen, session, webContents, type DesktopCapturerSource } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CH } from '../shared/channels';
@@ -10,13 +10,14 @@ import type {
   RecBarInit,
   RecBarState,
   RecCommand,
+  RecLayout,
   RecorderInit,
   RecordKind,
   RecordingSession,
   RecStarted,
   RecTrack,
 } from '../shared/types';
-import { displayUnderMouse, pickArea } from './capture';
+import { displayUnderMouse, overlaps, pickArea } from './capture';
 import type { SettingsStore } from './settings';
 import { assetFile, rendererFile, uiPrefs } from './util';
 
@@ -28,11 +29,18 @@ export interface RecorderDeps {
   onBusy: (busy: boolean) => void;
 }
 
+interface Region {
+  bounds: Electron.Rectangle;
+  scaleFactor: number;
+}
+
 interface Active {
   dir: string;
-  display: Display;
+  display: Region;
   area: NormRect | null;
-  source: DesktopCapturerSource;
+  sources: DesktopCapturerSource[];
+  served: number;
+  layout: RecLayout | undefined;
   page: BrowserWindow;
   bar: BrowserWindow | null;
   outline: BrowserWindow | null;
@@ -42,6 +50,7 @@ interface Active {
   started: number;
   pausedAt: number | null;
   pausedTotal: number;
+  stoppedAt: number | null;
   cursor: CursorLog | null;
   timers: NodeJS.Timeout[];
   stopping: 'stop' | 'cancel' | null;
@@ -60,7 +69,8 @@ export class Recorder {
       const a = this.active;
       const from = request.frame ? webContents.fromFrame(request.frame) : null;
       if (!a || !from || from !== a.page.webContents) return callback({});
-      callback({ video: a.source, audio: request.audioRequested && deps.settings.value('recordSystemAudio') ? 'loopback' : undefined });
+      const video = request.audioRequested ? a.sources[0] : a.sources[a.served++ % a.sources.length];
+      callback({ video, audio: request.audioRequested && deps.settings.value('recordSystemAudio') ? 'loopback' : undefined });
     });
 
     const fromPage = (sender: Electron.WebContents) => !!this.active && sender === this.active.page.webContents;
@@ -69,7 +79,14 @@ export class Recorder {
     ipcMain.handle(CH.recInit, (event): RecorderInit => {
       if (!fromPage(event.sender)) throw new Error('Unknown sender');
       const s = deps.settings;
-      return { fps: s.value('recordFps'), cursor: s.value('recordCursor'), systemAudio: s.value('recordSystemAudio'), micId: s.value('recordMic'), webcamId: s.value('recordWebcam') };
+      return {
+        fps: s.value('recordFps'),
+        cursor: s.value('recordCursor'),
+        systemAudio: s.value('recordSystemAudio'),
+        micId: s.value('recordMic'),
+        webcamId: s.value('recordWebcam'),
+        layout: this.active?.layout,
+      };
     });
     ipcMain.on(CH.recStarted, (event, data: unknown) => {
       if (fromPage(event.sender)) this.started(data as RecStarted);
@@ -124,21 +141,31 @@ export class Recorder {
 
   private async start(kind: RecordKind): Promise<void> {
     const locale = this.deps.locale();
-    let display = displayUnderMouse();
+    let screens = [displayUnderMouse()];
+    let display: Region = screens[0];
     let area: NormRect | null = null;
+    let layout: RecLayout | undefined;
     if (kind === 'area') {
       const labels = { annotate: '', upload: '', copy: '', save: '', record: t(locale, 'recRecord'), cancel: t(locale, 'capCancel') };
       const picked = await pickArea(t(locale, 'recHint'), this.deps.settings.value('font'), labels, 'video');
       if (!picked || picked.action !== 'record') return;
-      display = picked.display;
-      const { width, height } = display.bounds;
       const r = picked.rect;
-      area = { x: r.x / width, y: r.y / height, w: r.w / width, h: r.h / height };
-      if (area.w > 0.995 && area.h > 0.995) area = null;
+      const hit = screen.getAllDisplays().filter((d) => overlaps(d.bounds, r));
+      if (hit.length > 1) {
+        screens = hit;
+        display = { bounds: { x: r.x, y: r.y, width: r.w, height: r.h }, scaleFactor: Math.max(...hit.map((d) => d.scaleFactor)) };
+        layout = layoutOf(display, hit);
+      } else {
+        screens = [hit[0] ?? screen.getDisplayMatching({ x: r.x, y: r.y, width: r.w, height: r.h })];
+        display = screens[0];
+        const b = display.bounds;
+        area = { x: (r.x - b.x) / b.width, y: (r.y - b.y) / b.height, w: r.w / b.width, h: r.h / b.height };
+        if (area.w > 0.995 && area.h > 0.995) area = null;
+      }
     }
-    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
-    const source = sources.find((s) => s.display_id === String(display.id)) ?? (sources.length === 1 ? sources[0] : undefined);
-    if (!source) throw new Error('Screen not found');
+    const all = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+    const sources = screens.map((d) => all.find((s) => s.display_id === String(d.id)) ?? (all.length === 1 ? all[0] : undefined));
+    if (!sources.length || sources.some((s) => !s)) throw new Error('Screen not found');
 
     const dir = path.join(this.deps.videoRoot(), 'Enregistrements', stamp());
     await fs.promises.mkdir(dir, { recursive: true });
@@ -149,7 +176,9 @@ export class Recorder {
       dir,
       display,
       area,
-      source,
+      sources: sources as DesktopCapturerSource[],
+      served: 0,
+      layout,
       page,
       bar: null,
       outline: null,
@@ -159,6 +188,7 @@ export class Recorder {
       started: 0,
       pausedAt: null,
       pausedTotal: 0,
+      stoppedAt: null,
       cursor: null,
       timers: [],
       stopping: null,
@@ -188,7 +218,9 @@ export class Recorder {
       const o = data.offsets?.[track];
       if (typeof o === 'number' && Number.isFinite(o)) a.offsets[track] = o;
     }
-    a.started = Date.now();
+    const now = Date.now();
+    const at = data.startedAt;
+    a.started = typeof at === 'number' && Number.isFinite(at) && at <= now && now - at < 5000 ? at : now;
     this.showBar(a);
     if (data.noSystemAudio) this.notify(t(this.deps.locale(), 'recNoSound'), t(this.deps.locale(), 'recNoSoundBody'));
     this.followMouse(a);
@@ -211,6 +243,7 @@ export class Recorder {
       a.pausedAt = null;
     } else if (cmd === 'stop' || cmd === 'cancel') {
       a.stopping = cmd;
+      a.stoppedAt = Date.now();
       a.bar?.hide();
       a.outline?.hide();
       setTimeout(() => {
@@ -232,7 +265,7 @@ export class Recorder {
     const a = this.active;
     if (!a) return;
     this.active = null;
-    const duration = this.elapsed(a);
+    const duration = this.elapsed(a, a.stoppedAt ?? Date.now());
     a.timers.forEach((timer) => clearInterval(timer));
     await Promise.all(
       Object.values(a.streams).map((s) => new Promise<void>((resolve) => (s ? s.end(() => resolve()) : resolve()))),
@@ -243,7 +276,7 @@ export class Recorder {
       await fs.promises.rm(a.dir, { recursive: true, force: true }).catch(() => {});
       return;
     }
-    const scale = a.display.scaleFactor;
+    const scale = a.layout ? a.layout.width / a.display.bounds.width : a.display.scaleFactor;
     const info: RecordingSession = {
       version: 1,
       created: new Date().toISOString(),
@@ -275,8 +308,9 @@ export class Recorder {
     const d = a.display.bounds;
     let x = Math.round(d.x + (d.width - BAR.width) / 2);
     let y = d.y + 16;
-    if (a.area) {
-      const r = { x: d.x + a.area.x * d.width, y: d.y + a.area.y * d.height, w: a.area.w * d.width, h: a.area.h * d.height };
+    if (a.area || a.layout) {
+      const area = a.area ?? { x: 0, y: 0, w: 1, h: 1 };
+      const r = { x: d.x + area.x * d.width, y: d.y + area.y * d.height, w: area.w * d.width, h: area.h * d.height };
       x = Math.round(r.x + (r.w - BAR.width) / 2);
       y = Math.round(r.y + r.h + 12);
       if (y + BAR.height > d.y + d.height - 8) y = Math.round(r.y - BAR.height - 12);
@@ -363,7 +397,8 @@ export class Recorder {
         if (!read) return;
         [0x01, 0x02].forEach((vKey, button) => {
           const pressed = (read(vKey) & 0x8000) !== 0;
-          if (pressed && !down[button]) log.clicks.push(time, x, y, button);
+          const onBar = !!a.bar && !a.bar.isDestroyed() && inside(a.bar.getBounds(), p);
+          if (pressed && !down[button] && !onBar) log.clicks.push(time, x, y, button);
           down[button] = pressed;
         });
       }, 1000 / 60),
@@ -382,6 +417,26 @@ export class Recorder {
     }
     return this.buttons;
   }
+}
+
+function layoutOf(region: Region, displays: Electron.Display[]): RecLayout {
+  const b = region.bounds;
+  const scale = Math.min(region.scaleFactor, 4096 / b.width, 4096 / b.height);
+  const even = (v: number) => Math.max(2, Math.round(v / 2) * 2);
+  return {
+    width: even(b.width * scale),
+    height: even(b.height * scale),
+    screens: displays.map((d) => ({
+      x: Math.round((d.bounds.x - b.x) * scale),
+      y: Math.round((d.bounds.y - b.y) * scale),
+      w: Math.round(d.bounds.width * scale),
+      h: Math.round(d.bounds.height * scale),
+    })),
+  };
+}
+
+function inside(r: Electron.Rectangle, p: Electron.Point): boolean {
+  return p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height;
 }
 
 function stamp(): string {

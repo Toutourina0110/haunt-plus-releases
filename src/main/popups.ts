@@ -10,7 +10,7 @@ import {
 import { CH } from '../shared/channels';
 import { palette } from '../shared/palette';
 import type { Locale, PopupAction, PopupState, SiteId, UiInit } from '../shared/types';
-import { decidePopupNavigation, type Decision } from './routing';
+import { decidePopupNavigation, siteOf, type Decision } from './routing';
 import type { SettingsStore } from './settings';
 import { assetFile, load, openExternal, rendererFile, sitePrefs, TITLEBAR, uiPrefs } from './util';
 
@@ -30,6 +30,7 @@ type Kind = 'link' | 'auth';
 class Popup {
   readonly win: BrowserWindow;
   readonly view: WebContentsView;
+  private readonly home: SiteId | null;
 
   constructor(
     private readonly ctx: PopupContext,
@@ -39,6 +40,7 @@ class Popup {
     offset: number,
     onClosed: () => void,
   ) {
+    this.home = init.url ? siteOf(init.url) : null;
     const p = palette(source, ctx.isDark());
     const parent = ctx.parent();
     const width = Math.max(480, Math.round(init.width ?? 1040));
@@ -172,10 +174,10 @@ class Popup {
   private wire(): void {
     const wc = this.view.webContents;
     wc.on('will-navigate', (event) => {
-      if (this.apply(decidePopupNavigation(this.kind, event.url))) event.preventDefault();
+      if (this.apply(decidePopupNavigation(this.kind, event.url, this.home))) event.preventDefault();
     });
     wc.setWindowOpenHandler(({ url }) => {
-      const decision = decidePopupNavigation('link', url);
+      const decision = decidePopupNavigation('link', url, this.home);
       if (!this.apply(decision)) load(wc, url);
       return { action: 'deny' };
     });
@@ -198,8 +200,13 @@ export class Popups {
 
   constructor(private readonly ctx: PopupContext) {}
 
-  open(source: SiteId, url: string): void {
-    this.track(new Popup(this.ctx, source, 'link', { url }, this.nextOffset(), () => this.forget()));
+  open(source: SiteId, url: string, onClosed?: () => void): void {
+    this.track(
+      new Popup(this.ctx, source, 'link', { url }, this.nextOffset(), () => {
+        this.forget();
+        onClosed?.();
+      }),
+    );
   }
 
   adopt(source: SiteId, options: BrowserWindowConstructorOptions): WebContents {

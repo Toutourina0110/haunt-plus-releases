@@ -83,15 +83,17 @@ export function decideWindowOpen(from: SiteId, raw: string, features: string, li
   const target = siteOf(raw);
   const sized = /(width|height)\s*=/.test(features);
   if (from === 'tools' && sized && isHauntAuthPage(raw)) return { kind: 'auth-popup' };
+  if (from === 'haunt' && target === 'haunt' && !sized && !isHauntAuthPage(raw)) return { kind: 'popup', url: raw };
   if (target) return { kind: 'site', site: target, url: raw };
   if (isAuthPage(raw) || sized) return { kind: 'auth-popup' };
   return links === 'browser' ? { kind: 'external', url: raw } : { kind: 'popup', url: raw };
 }
 
-export function decidePopupNavigation(kind: 'link' | 'auth', raw: string): Decision {
+export function decidePopupNavigation(kind: 'link' | 'auth', raw: string, home: SiteId | null = null): Decision {
   if (!isWebUrl(raw)) return nonWeb(raw);
   if (kind === 'auth') return { kind: 'allow' };
   const target = siteOf(raw);
+  if (target && target === home) return { kind: 'allow' };
   if (target && !isHauntAuthPage(raw)) return { kind: 'site', site: target, url: raw };
   return { kind: 'allow' };
 }

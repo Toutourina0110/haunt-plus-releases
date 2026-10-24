@@ -3,6 +3,8 @@ export const CH = {
 
   switchSite: 'nav:switch',
   nav: 'nav:action',
+  navTo: 'nav:to',
+  addressEdit: 'address:edit',
   copyLink: 'link:copy',
 
   state: 'shell:state',
@@ -44,6 +46,7 @@ export const CH = {
   tourRequest: 'tour:request',
   tourStart: 'tour:start',
   tourDone: 'tour:done',
+  settingsRequest: 'settings:request',
 
   captureInit: 'capture:init',
 
@@ -68,6 +71,9 @@ export const CH = {
   videoCall: 'video:call',
   videoExportWrite: 'video:export-write',
   captureSelect: 'capture:select',
+  captureDown: 'capture:down',
+  captureUp: 'capture:up',
+  captureSync: 'capture:sync',
 
   popupState: 'popup:state',
   popupAction: 'popup:action',
@@ -80,6 +86,7 @@ export const CH = {
 export const UI_SEND = [
   CH.switchSite,
   CH.nav,
+  CH.navTo,
   CH.copyLink,
   CH.overlayReady,
   CH.overlayCovered,
@@ -102,9 +109,12 @@ export const UI_SEND = [
   CH.recbarAction,
   CH.videoExportWrite,
   CH.captureSelect,
+  CH.captureDown,
+  CH.captureUp,
   CH.shortcutPause,
   CH.tourRequest,
   CH.tourDone,
+  CH.settingsRequest,
   CH.updateNoticeClosed,
 ] as const;
 
@@ -130,6 +140,8 @@ export const UI_LISTEN = [
   CH.recCommand,
   CH.recbarState,
   CH.recording,
+  CH.captureSync,
+  CH.addressEdit,
 ] as const;
 
 export const UI_INVOKE = [

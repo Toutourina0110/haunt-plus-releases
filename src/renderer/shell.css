@@ -202,3 +202,73 @@ body {
     opacity: 0.6;
   }
 }
+
+.title.editable {
+  pointer-events: auto;
+  cursor: text;
+  -webkit-app-region: no-drag;
+}
+
+.title.editable:not(.editing) {
+  top: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow 120ms ease;
+}
+
+.title.editable:not(.editing):hover {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.title-edit {
+  display: none;
+  color: var(--muted);
+}
+
+.title-edit svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.title.editable:not(.editing) .title-edit {
+  display: block;
+}
+
+.title.editable:hover .title-edit {
+  color: var(--accent);
+}
+
+.title.editing > span {
+  display: none;
+}
+
+.address {
+  display: flex;
+  align-items: center;
+  width: min(46vw, 480px);
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.address-lead {
+  flex: none;
+  color: var(--muted);
+}
+
+.address input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+}

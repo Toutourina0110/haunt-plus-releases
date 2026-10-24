@@ -34,7 +34,7 @@ import {
   type UpdateStatus,
 } from '../shared/types';
 import type { Popups } from './popups';
-import { decideNavigation, decideWindowOpen, SITES, type Decision } from './routing';
+import { decideNavigation, decideWindowOpen, siteOf, SITES, type Decision } from './routing';
 import type { SettingsStore } from './settings';
 import { runMenuCommandJs } from './userscript';
 import {
@@ -55,7 +55,7 @@ const MENU_W = 76;
 const MENU_H = 296;
 const EDGE = 6;
 const SPLASH_MIN = 900;
-const HAUNT_PLUS_SCOPE = /^\/(dashboard|acp)(\/|$)/;
+const HAUNT_PLUS_SCOPE = /^\/(?:[a-z]{2}\/)?(dashboard|acp)(\/|$)/;
 const MODIFIERS = ['Control', 'Shift', 'Alt', 'Meta'];
 const LOGO_FILES: Record<TabId, [string, string]> = {
   haunt: ['assets/haunt.png', 'image/png'],
@@ -264,11 +264,17 @@ export class MainWindow {
       case CH.copyLink:
         this.copyLink();
         break;
+      case CH.navTo:
+        if (sender === this.win.webContents && typeof data === 'string') this.goTo(data);
+        break;
       case CH.menuAction:
         if (sender === this.overlay.webContents) void this.onMenu(data as MenuAction);
         break;
       case CH.tourRequest:
         if (sender === this.win.webContents) void this.startAppTour();
+        break;
+      case CH.settingsRequest:
+        if (sender === this.win.webContents) void this.openSettings();
         break;
       case CH.tourDone:
         if (sender === this.overlay.webContents) this.endAppTour();
@@ -412,6 +418,21 @@ export class MainWindow {
     if (action === 'forward' && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
     if (action === 'reload') wc.reload();
     if (action === 'home' && isSiteId(this.active)) load(wc, SITES[this.active].home);
+  }
+
+  private goTo(path: string): void {
+    if (!isSiteId(this.active) || path.length > 2048) return;
+    const origin = new URL(SITES[this.active].home).origin;
+    let url: URL;
+    try {
+      url = new URL(path.replace(/^[\\/]+/, ''), origin + '/');
+    } catch {
+      return;
+    }
+    if (url.origin !== origin) return;
+    const wc = this.views[this.active].webContents;
+    load(wc, url.href);
+    wc.focus();
   }
 
   copyLink(): void {
@@ -658,6 +679,11 @@ export class MainWindow {
       void this.openSettings();
       return true;
     }
+    if (ctrl && !input.shift && !input.alt && lower === 'l' && isSiteId(this.active)) {
+      this.win.webContents.focus();
+      this.win.webContents.send(CH.addressEdit);
+      return true;
+    }
     if (input.alt && !ctrl && (key === 'ArrowLeft' || key === 'ArrowRight')) {
       const history = target.navigationHistory;
       if (key === 'ArrowLeft' && history.canGoBack()) history.goBack();
@@ -769,12 +795,18 @@ export class MainWindow {
         void this.switchTo(decision.site, decision.url);
         return true;
       case 'popup':
-        this.deps.popups().open(from, decision.url);
+        this.deps.popups().open(from, decision.url, siteOf(decision.url) === from ? () => this.popupClosed(from) : undefined);
         return true;
       case 'external':
         openExternal(decision.url);
         return true;
     }
+  }
+
+  private popupClosed(site: SiteId): void {
+    const wc = this.views[site].webContents;
+    if (wc.isDestroyed()) return;
+    wc.executeJavaScript("window.dispatchEvent(new CustomEvent('hauntplus:popup-closed'))").catch(() => {});
   }
 
   private wireWindow(): void {

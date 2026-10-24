@@ -636,8 +636,9 @@ function zoomSection(clip: Clip, media: MediaItem): HTMLElement {
   if (current) {
     kids.push(
       slider('vdZoomScale', 1.1, 4, 0.05, current.scale, (v) => (current.scale = v), (v) => `${v.toFixed(2)}×`),
-      slider('vdZoomX', 0, 1, 0.005, current.x, (v) => (current.x = v), pct),
-      slider('vdZoomY', 0, 1, 0.005, current.y, (v) => (current.y = v), pct),
+      media.cursor?.length ? toggle('vdZoomFollow', !!current.follow, (on) => (current.follow = on)) : null,
+      current.follow ? null : slider('vdZoomX', 0, 1, 0.005, current.x, (v) => (current.x = v), pct),
+      current.follow ? null : slider('vdZoomY', 0, 1, 0.005, current.y, (v) => (current.y = v), pct),
       slider('vdLength', 0.3, 15, 0.1, current.d, (v) => (current.d = Math.min(v, clipLength(clip) - current.t)), seconds),
     );
   }

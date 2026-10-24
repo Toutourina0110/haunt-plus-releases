@@ -136,13 +136,20 @@ export async function probe(file: { path: string; url: string; name: string }, e
   }
 }
 
+const CAPTURE_DELAY = 0.04;
+
 export async function projectFromRecording(rec: SessionMedia, name: string, autoZoom = false): Promise<Project> {
   const p = newProject(name);
   const s = rec.session;
   p.fps = s.fps === 60 ? 60 : 30;
   const screen = rec.files.screen;
   if (!screen) return p;
-  const media = await probe({ ...screen, name: 'screen' }, { crop: s.area, session: rec.dir, clicks: rec.cursor?.clicks });
+  const media = await probe({ ...screen, name: 'screen' }, { crop: s.area, session: rec.dir });
+  const late = typeof s.duration === 'number' ? Math.max(0, Math.min(1, media.duration - s.duration + CAPTURE_DELAY)) : 0;
+  const shift = (log: number[] | undefined, stride: number) =>
+    log?.map((v, i) => (i % stride === 0 ? Math.round((v + late) * 1000) / 1000 : v));
+  media.clicks = shift(rec.cursor?.clicks, 4);
+  media.cursor = shift(rec.cursor?.samples, 3);
   p.media.push(media);
   const area = s.area ?? { x: 0, y: 0, w: 1, h: 1 };
   p.width = even(media.width * area.w);
@@ -308,39 +315,103 @@ export function toggleKeyframe(c: Clip, prop: AnimProp, tRel: number): void {
   keys.sort((a, b) => a.t - b.t);
 }
 
-export function zoomAt(c: Clip, tRel: number): { scale: number; x: number; y: number } {
+function cursorAt(samples: number[], ts: number): { x: number; y: number } {
+  const n = samples.length / 3;
+  let lo = 0;
+  let hi = n - 1;
+  if (ts <= samples[0]) return { x: samples[1], y: samples[2] };
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (samples[mid * 3] <= ts) lo = mid;
+    else hi = mid - 1;
+  }
+  return { x: samples[lo * 3 + 1], y: samples[lo * 3 + 2] };
+}
+
+const FOLLOW_STEP = 1 / 60;
+const FOLLOW_LAG = 0.4;
+const FOLLOW_FREE = 0.55;
+const cameras = new WeakMap<ZoomSegment, { key: string; t: number; x: number; y: number }>();
+
+function followPoint(c: Clip, z: ZoomSegment, media: MediaItem, tRel: number): { x: number; y: number } | null {
+  const samples = media.cursor;
+  if (!samples || samples.length < 3) return null;
+  const crop = media.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+  const mouse = (t: number) => {
+    const p = cursorAt(samples, c.in + t * c.speed);
+    return { x: Math.max(0, Math.min(1, (p.x - crop.x) / crop.w)), y: Math.max(0, Math.min(1, (p.y - crop.y) / crop.h)) };
+  };
+  const half = 0.5 / z.scale;
+  const free = half * FOLLOW_FREE;
+  const pull = 1 - Math.exp(-FOLLOW_STEP / FOLLOW_LAG);
+  const inside = (v: number) => Math.max(half, Math.min(1 - half, v));
+  const key = [z.t, z.scale, c.in, c.speed, crop.x, crop.y, crop.w, crop.h].join();
+  let cam = cameras.get(z);
+  if (!cam || cam.key !== key || cam.t > tRel) {
+    const start = mouse(z.t);
+    cam = { key, t: z.t, x: inside(start.x), y: inside(start.y) };
+  }
+  let { t, x, y } = cam;
+  while (t + FOLLOW_STEP <= tRel) {
+    t += FOLLOW_STEP;
+    const m = mouse(t + FOLLOW_LAG / 2);
+    const want = (cur: number, to: number) => (to - cur > free ? to - free : cur - to > free ? to + free : cur);
+    x += (inside(want(x, m.x)) - x) * pull;
+    y += (inside(want(y, m.y)) - y) * pull;
+  }
+  cameras.set(z, { key, t, x, y });
+  return { x, y };
+}
+
+export function lastUsefulClick(media: MediaItem): number {
+  return media.duration > 0 ? media.duration - 0.5 : Infinity;
+}
+
+export function zoomAt(c: Clip, tRel: number, media?: MediaItem): { scale: number; x: number; y: number } {
   for (const z of c.zooms ?? []) {
     if (tRel < z.t || tRel > z.t + z.d) continue;
     const ramp = Math.min(0.6, z.d / 3);
-    const k = ease('smooth', Math.min((tRel - z.t) / ramp, (z.t + z.d - tRel) / ramp, 1));
-    return { scale: 1 + (z.scale - 1) * k, x: 0.5 + (z.x - 0.5) * k, y: 0.5 + (z.y - 0.5) * k };
+    const toEnd = z.t + z.d >= clipLength(c) - 0.01;
+    const k = ease('smooth', Math.min((tRel - z.t) / ramp, toEnd ? 1 : (z.t + z.d - tRel) / ramp, 1));
+    const at = z.follow && media ? followPoint(c, z, media, tRel) : null;
+    const x = at?.x ?? z.x;
+    const y = at?.y ?? z.y;
+    return { scale: 1 + (z.scale - 1) * k, x: 0.5 + (x - 0.5) * k, y: 0.5 + (y - 0.5) * k };
   }
   return { scale: 1, x: 0.5, y: 0.5 };
 }
 
-export function autoZooms(c: Clip, media: MediaItem, scale = 1.8): ZoomSegment[] {
+export function autoZooms(c: Clip, media: MediaItem, scale = 1.6): ZoomSegment[] {
   const crop = media.crop ?? { x: 0, y: 0, w: 1, h: 1 };
-  const out: ZoomSegment[] = [];
+  const follow = (media.cursor?.length ?? 0) >= 3;
+  const ramp = 0.6;
+  const groups: Array<{ first: number; last: number; xs: number[]; ys: number[] }> = [];
   const clicks = media.clicks ?? [];
   for (let i = 0; i + 3 < clicks.length; i += 4) {
     const [ts, cx, cy, button] = clicks.slice(i, i + 4);
-    if (button !== 0 || ts < c.in || ts > c.out) continue;
+    if (button !== 0 || ts < c.in || ts > c.out || ts > lastUsefulClick(media)) continue;
     const x = (cx - crop.x) / crop.w;
     const y = (cy - crop.y) / crop.h;
     if (x < 0 || x > 1 || y < 0 || y > 1) continue;
     const t = (ts - c.in) / c.speed;
-    const start = Math.max(0, t - 0.5);
-    const end = t + 1.8;
-    const last = out[out.length - 1];
-    const near = last && Math.hypot(last.x - x, last.y - y) < 0.2;
-    if (last && near && start <= last.t + last.d + 0.6) {
-      last.d = end - last.t;
-      last.x = (last.x + x) / 2;
-      last.y = (last.y + y) / 2;
-    } else {
-      if (last && last.t + last.d > start) last.d = Math.max(0.6, start - last.t);
-      out.push({ t: Math.max(start, last ? last.t + last.d : 0), d: end - start, x, y, scale });
+    const g = groups[groups.length - 1];
+    if (g && t - g.last <= 3) {
+      g.last = t;
+      g.xs.push(x);
+      g.ys.push(y);
+    } else groups.push({ first: t, last: t, xs: [x], ys: [y] });
+  }
+  const mean = (v: number[]) => v.reduce((s, n) => s + n, 0) / v.length;
+  const out: ZoomSegment[] = [];
+  for (const g of groups) {
+    const start = Math.max(0, g.first - ramp - 0.15);
+    const end = g.last + 1.5;
+    const prev = out[out.length - 1];
+    if (prev && start <= prev.t + prev.d + 0.8) {
+      prev.d = end - prev.t;
+      continue;
     }
+    out.push({ t: start, d: end - start, x: mean(g.xs), y: mean(g.ys), scale, follow });
   }
   const len = clipLength(c);
   return out.filter((z) => z.t < len).map((z) => ({ ...z, d: Math.min(z.d, len - z.t) }));

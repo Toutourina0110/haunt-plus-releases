@@ -7,6 +7,7 @@ interface Element {
   gain: GainNode;
   mediaId: string;
   silent: boolean;
+  shown: number;
 }
 
 export class Player {
@@ -80,7 +81,14 @@ export class Player {
     });
     const gain = this.ctx.createGain();
     this.ctx.createMediaElementSource(el).connect(gain).connect(this.ctx.destination);
-    const e: Element = { el, gain, mediaId: media.id, silent: false };
+    const e: Element = { el, gain, mediaId: media.id, silent: false, shown: NaN };
+    if (el instanceof HTMLVideoElement) {
+      const onFrame: VideoFrameRequestCallback = (_now, frame) => {
+        e.shown = frame.mediaTime;
+        if (this.elements.get(clip.id) === e) el.requestVideoFrameCallback(onFrame);
+      };
+      el.requestVideoFrameCallback(onFrame);
+    }
     this.elements.set(clip.id, e);
     return e;
   }
@@ -201,7 +209,8 @@ export class Player {
     }
     const e = this.elements.get(clip.id);
     if (!(e?.el instanceof HTMLVideoElement) || e.el.readyState < 2) return null;
-    return { image: e.el, width: e.el.videoWidth, height: e.el.videoHeight };
+    const shown = this.playing && Math.abs(e.shown - e.el.currentTime) < 0.5 ? e.shown : e.el.currentTime;
+    return { image: e.el, width: e.el.videoWidth, height: e.el.videoHeight, time: shown };
   }
 
   dispose(): void {

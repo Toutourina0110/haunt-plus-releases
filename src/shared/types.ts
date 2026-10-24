@@ -256,13 +256,27 @@ export interface CaptureInit {
   image: string;
   hint: string;
   font: string;
-  mode: 'shot' | 'video';
+  mode: 'shot' | 'video' | 'screen';
   labels: Record<PickAction | 'cancel', string>;
+  screens?: { here: string; all: string };
+  origin: { x: number; y: number };
 }
 
 export interface CapturePick {
-  rect: CaptureRect;
   action: PickAction;
+  whole?: boolean;
+  all?: boolean;
+}
+
+export interface CaptureDown {
+  mode: 'draw' | 'move' | 'resize';
+  handle?: string;
+}
+
+export interface CaptureSync {
+  rect: CaptureRect | null;
+  chosen: boolean;
+  bar: boolean;
 }
 
 export interface CaptureRect {
@@ -292,12 +306,20 @@ export interface RecorderInit {
   systemAudio: boolean;
   micId: string;
   webcamId: string;
+  layout?: RecLayout;
+}
+
+export interface RecLayout {
+  width: number;
+  height: number;
+  screens: Array<{ x: number; y: number; w: number; h: number }>;
 }
 
 export interface RecStarted {
   mimes: Partial<Record<RecTrack, string>>;
   offsets: Partial<Record<RecTrack, number>>;
   noSystemAudio?: boolean;
+  startedAt?: number;
 }
 
 export interface RecBarInit {
@@ -340,6 +362,7 @@ export interface MediaItem {
   crop: NormRect | null;
   session: string | null;
   clicks?: number[];
+  cursor?: number[];
 }
 
 export type ClipType = 'media' | 'text' | 'shape' | 'effect';
@@ -365,6 +388,7 @@ export interface ZoomSegment {
   x: number;
   y: number;
   scale: number;
+  follow?: boolean;
 }
 
 export interface TextStyle {

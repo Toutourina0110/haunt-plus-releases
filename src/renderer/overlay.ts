@@ -392,6 +392,7 @@ function shortcutList(): HTMLElement {
     ['Control+R', 'scReload'],
     ['Control+Shift+C', 'scCopy'],
     ['Control+S', 'scSettings'],
+    ['Control+L', 'scAddress'],
     ['Control+Shift+H', 'scHauntPlus'],
   ];
   const list = document.createElement('dl');

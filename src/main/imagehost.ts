@@ -193,8 +193,11 @@ export class ImageHost {
   }
 
   async captureScreen(): Promise<void> {
+    const l = this.deps.locale();
+    const labels = { annotate: '', upload: '', copy: '', save: '', record: '', cancel: t(l, 'capCancel') };
+    const screens = { here: t(l, 'capThisScreen'), all: t(l, 'capAllScreens') };
     await this.capture(async () => {
-      const image = await captureScreen();
+      const image = await captureScreen(t(l, 'captureScreenHint'), this.deps.settings.value('font'), labels, screens);
       return image ? { image, action: 'auto' } : null;
     });
   }

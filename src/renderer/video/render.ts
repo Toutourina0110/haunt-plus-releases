@@ -1,10 +1,11 @@
 import type { Clip, ClipTransition, MediaItem, Project } from '../../shared/types';
-import { activeClip, clipLength, DEFAULT_FILTERS, ease, mediaOf, sample, typeOf, zoomAt } from './project';
+import { activeClip, clipLength, DEFAULT_FILTERS, ease, lastUsefulClick, mediaOf, sample, typeOf, zoomAt } from './project';
 
 export interface FrameSource {
   image: CanvasImageSource;
   width: number;
   height: number;
+  time?: number;
 }
 
 export type SourceOf = (clip: Clip, media: MediaItem) => FrameSource | null;
@@ -118,7 +119,8 @@ function drawMedia(ctx: Ctx, p: Project, clip: Clip, media: MediaItem, src: Fram
   let sw = Math.max(1, crop.w * src.width);
   let sh = Math.max(1, crop.h * src.height);
 
-  const z = zoomAt(clip, tRel);
+  const shownAt = src.time !== undefined ? (src.time - clip.in) / clip.speed : tRel;
+  const z = zoomAt(clip, shownAt, media);
   const zw = sw / z.scale;
   const zh = sh / z.scale;
   const zx = sx + Math.max(0, Math.min(sw - zw, z.x * sw - zw / 2));
@@ -184,7 +186,7 @@ function drawMedia(ctx: Ctx, p: Project, clip: Clip, media: MediaItem, src: Fram
   ctx.drawImage(src.image, dsx, dsy, dsw, dsh, -w / 2, -h / 2, w, h);
   ctx.filter = 'none';
   if (clip.clicks && media.clicks?.length) {
-    drawClicks(ctx, clip, media, tRel, { x: dsx, y: dsy, w: dsw, h: dsh }, src, w, h);
+    drawClicks(ctx, clip, media, shownAt, { x: dsx, y: dsy, w: dsw, h: dsh }, src, w, h);
   }
   ctx.restore();
 }
@@ -202,7 +204,9 @@ function drawClicks(
   const now = clip.in + tRel * clip.speed;
   const clicks = media.clicks!;
   const size = Math.min(w, h);
+  const last = lastUsefulClick(media);
   for (let i = 0; i + 3 < clicks.length; i += 4) {
+    if (clicks[i] > last) continue;
     const age = (now - clicks[i]) / clip.speed;
     if (age < 0 || age > 0.6) continue;
     const px = clicks[i + 1] * src.width;
