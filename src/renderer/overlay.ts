@@ -39,9 +39,7 @@ import {
 import { GlEngine } from './motion/gl/engine';
 import { scenes, warm } from './motion/gl';
 import { GlMorph } from './motion/gl/morph';
-import { executionCues, prepareExecution } from './motion/execution';
-import { EXECUTION } from './motion/execution-params';
-import { ExecutionSfx } from './motion/execution-sfx';
+import { prepareExecution } from './motion/execution';
 import { Preview, type PreviewEnv } from './motion/preview';
 import { Stage, type Leg, type Picture } from './motion/stage';
 import { decodeShot, loadMark, sampleCells, TileMorph, type Mark, type Shot } from './tiles';
@@ -178,11 +176,7 @@ async function glSwitch(payload: TransitionPayload, run: OverlayRun, all: Record
   const from = await take(fromSite, payload.from);
   const execution = payload.mode === 'execution';
   if (execution) await prepareExecution(all);
-  const p = dark ? EXECUTION.dark : EXECUTION.light;
-  const volume = settings?.executionSound ? (settings.executionVolume ?? 60) / 100 : 0;
-  const sound = execution && volume > 0 ? new ExecutionSfx(executionCues(p, payload.toSite), volume) : null;
   const morph = new GlMorph({
-    onTick: sound ? (t) => sound.tick(t * p.end) : undefined,
     engine,
     scene: scenes[payload.mode],
     mode: payload.mode,
@@ -199,7 +193,6 @@ async function glSwitch(payload: TransitionPayload, run: OverlayRun, all: Record
   glCanvas.hidden = false;
   run.stop = execution
     ? () => {
-        sound?.fade(120);
         const fade = glCanvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out', fill: 'forwards' });
         void fade.finished.then(
           () => morph.abort(),
@@ -213,8 +206,7 @@ async function glSwitch(payload: TransitionPayload, run: OverlayRun, all: Record
   onTarget = (shot) => morph.setTarget(shot);
   desk.send(CH.overlayCovered);
   if (run.aborted) run.stop();
-  const stats = await morph.play();
-  if (!stats.aborted) sound?.finish();
+  await morph.play();
 }
 
 async function tiles(
@@ -427,7 +419,7 @@ function group(title: StringKey, ...children: HTMLElement[]): HTMLElement {
   return section;
 }
 
-type BoolKey = 'openAtLogin' | 'closeToTray' | 'hauntPlus' | 'globalShortcut' | 'executionSound';
+type BoolKey = 'openAtLogin' | 'closeToTray' | 'hauntPlus' | 'globalShortcut';
 
 function toggleRow(key: BoolKey, label: StringKey, hint?: StringKey): HTMLElement {
   const row = document.createElement('div');
@@ -598,7 +590,6 @@ function transitionPicker(): HTMLElement {
     set.append(title);
     group.append(set);
     for (const [mode, name, hint] of options) picks.push(pickOption(set, mode, name, hint));
-    if (label === 'animGroupCinema') set.append(executionSound());
   });
   group.addEventListener('keydown', (event) => {
     const at = picks.findIndex((p) => p.opt === document.activeElement);
@@ -642,31 +633,6 @@ function pickOption(set: HTMLElement, mode: AnimationMode, name: StringKey, hint
   opt.addEventListener('click', () => pickTransition(mode));
   set.append(opt);
   return { mode, opt, preview };
-}
-
-function executionSound(): HTMLElement {
-  const box = document.createElement('div');
-  box.className = 'tp-extra';
-  const row = document.createElement('label');
-  row.className = 'sp-row tp-volume';
-  const name = document.createElement('span');
-  name.className = 'sp-label';
-  name.textContent = tr('executionVolume');
-  const out = document.createElement('output');
-  out.id = 'execution-volume-at';
-  const input = document.createElement('input');
-  input.type = 'range';
-  input.id = 'execution-volume';
-  input.min = '0';
-  input.max = '100';
-  input.step = '5';
-  input.addEventListener('input', () => {
-    out.textContent = `${input.value} %`;
-    change({ executionVolume: Number(input.value) });
-  });
-  row.append(name, out, input);
-  box.append(toggleRow('executionSound', 'executionSound'), row);
-  return box;
 }
 
 function pickTransition(mode: AnimationMode): void {
@@ -992,11 +958,6 @@ function renderSettings(): void {
     selectChoice(seg, settings[key]);
   }
   syncPicker();
-  const volume = document.getElementById('execution-volume') as HTMLInputElement | null;
-  if (volume && document.activeElement !== volume) volume.value = String(settings.executionVolume);
-  const volumeAt = document.getElementById('execution-volume-at');
-  if (volumeAt) volumeAt.textContent = `${settings.executionVolume} %`;
-  if (volume) volume.disabled = !settings.executionSound;
   const speed = panel.querySelector<HTMLElement>('.seg[data-key="transitionSpeed"]');
   if (speed) {
     const off = settings.animations === 'simple' || settings.animations === 'off';

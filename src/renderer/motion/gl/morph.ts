@@ -56,7 +56,6 @@ export interface GlMorphOptions {
   tune?: Record<string, number>;
   log?: (message: string) => void;
   onFrame?: () => void;
-  onTick?: (t: number) => void;
   start?: number;
 }
 
@@ -210,7 +209,6 @@ export class GlMorph {
   private draw(t: number): void {
     this.o.engine.begin();
     this.scene.draw(t, this.frame++);
-    this.o.onTick?.(t);
     this.o.onFrame?.();
   }
 

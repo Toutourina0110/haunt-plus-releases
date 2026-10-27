@@ -12,30 +12,6 @@ type P = [number, number];
 
 export const EXECUTION_NAMES: Record<TabId, string> = { haunt: 'HAUNT', tools: 'HAUNT TOOLS', images: 'IMAGEHOST' };
 
-export interface Cue {
-  at: number;
-  sound: 'whoosh' | 'tension' | 'tac' | 'stamp' | 'fsht' | 'impact' | 'breath' | 'click' | 'collapse' | 'chord' | 'final';
-  length?: number;
-}
-
-export function executionCues(p: ExecutionParams, tab: TabId): Cue[] {
-  const cues: Cue[] = [{ at: 0, sound: 'whoosh' }, { at: p.shot2, sound: 'tension', length: p.shot4 + 0.55 - p.shot2 }];
-  const name = EXECUTION_NAMES[tab];
-  [...name].forEach((c, i) => {
-    if (c.trim()) cues.push({ at: p.shot3 + i * p.letterGap, sound: 'tac' });
-  });
-  cues.push({ at: stampAt(p, name), sound: 'stamp' });
-  for (const s of [p.strike1, p.strike2, p.strike3]) cues.push({ at: s, sound: 'fsht' }, { at: s + p.cross, sound: 'impact' });
-  cues.push(
-    { at: p.shot6, sound: 'breath', length: p.sheathe - p.shot6 },
-    { at: p.sheathe, sound: 'click' },
-    { at: p.shot7, sound: 'collapse' },
-    { at: p.shot7 + 0.35, sound: 'chord' },
-    { at: p.shot8 + p.backToReal, sound: 'final' },
-  );
-  return cues;
-}
-
 export function executionFlashes(p: ExecutionParams): number[] {
   return [p.strike1, p.strike2, p.strike3].map((s) => s + p.cross);
 }

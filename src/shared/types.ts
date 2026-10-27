@@ -67,8 +67,6 @@ export interface Settings {
   externalLinks: LinkTarget;
   hauntPlus: boolean;
   globalShortcut: boolean;
-  executionSound: boolean;
-  executionVolume: number;
   trayHintShown: boolean;
   maximized: boolean;
   bounds: WindowBounds | null;
@@ -108,8 +106,6 @@ export const EDITABLE_KEYS = [
   'externalLinks',
   'hauntPlus',
   'globalShortcut',
-  'executionSound',
-  'executionVolume',
 ] as const;
 
 export type EditableKey = (typeof EDITABLE_KEYS)[number];

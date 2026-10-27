@@ -35,8 +35,6 @@ const DEFAULTS: Settings = {
   externalLinks: 'popup',
   hauntPlus: true,
   globalShortcut: true,
-  executionSound: true,
-  executionVolume: 60,
   trayHintShown: false,
   maximized: false,
   bounds: null,
@@ -54,7 +52,6 @@ const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
 };
 
 const BOOLEANS: Array<keyof Settings> = [
-  'executionSound',
   'openAtLogin',
   'closeToTray',
   'hauntPlus',
@@ -98,8 +95,6 @@ function clean(input: unknown, allowed: readonly (keyof Settings)[]): Partial<Se
       if (typeof value === 'string' && value.length < 1000) out[key] = value;
     } else if (key === 'recordFps') {
       if (value === 30 || value === 60) out[key] = value;
-    } else if (key === 'executionVolume') {
-      if (typeof value === 'number' && Number.isFinite(value)) out[key] = Math.round(Math.min(100, Math.max(0, value)));
     } else if (key === 'replaySeconds') {
       if (value === 15 || value === 30 || value === 60 || value === 120) out[key] = value;
     } else if (key === 'recordMic' || key === 'recordWebcam') {
