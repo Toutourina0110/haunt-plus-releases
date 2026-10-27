@@ -43,7 +43,7 @@ interface Export {
 }
 
 export class VideoEditors {
-  private readonly windows = new Map<WebContents, { win: BrowserWindow; projectId: string | null; recording: string | null }>();
+  private readonly windows = new Map<WebContents, { win: BrowserWindow; projectId: string | null; recording: string | null; clip?: string }>();
   private readonly exports = new Map<string, Export>();
 
   constructor(private readonly deps: VideoEditorDeps) {
@@ -55,7 +55,7 @@ export class VideoEditors {
         font: deps.settings.value('font'),
         hasKey: deps.hasKey(),
         project: entry.projectId ? await this.readProject(entry.projectId) : null,
-        recording: entry.recording ? await this.readRecording(entry.recording) : null,
+        recording: entry.recording ? await this.readRecording(entry.recording) : entry.clip ? await this.readClip(entry.clip) : null,
         recent: await this.projects(),
         autoZoom: deps.settings.value('recordAutoZoom'),
       };
@@ -90,7 +90,7 @@ export class VideoEditors {
     };
   }
 
-  open(opts: { projectId?: string; recording?: string } = {}): void {
+  open(opts: { projectId?: string; recording?: string; clip?: string } = {}): void {
     const dark = this.deps.isDark();
     const bg = dark ? '#060606' : '#ffffff';
     const win = new BrowserWindow({
@@ -107,7 +107,7 @@ export class VideoEditors {
       webPreferences: uiPrefs(),
     });
     const wc = win.webContents;
-    this.windows.set(wc, { win, projectId: opts.projectId ?? null, recording: opts.recording ?? null });
+    this.windows.set(wc, { win, projectId: opts.projectId ?? null, recording: opts.recording ?? null, clip: opts.clip });
     win.on('closed', () => {
       this.windows.delete(wc);
       for (const [token, job] of this.exports) if (job.owner === wc) this.closeExport(token, false);
@@ -259,6 +259,29 @@ export class VideoEditors {
       }
     }
     return out.sort((a, b) => b.created.localeCompare(a.created)).slice(0, 40);
+  }
+
+  private async readClip(file: string): Promise<SessionMedia | null> {
+    const dir = path.join(this.dirs().root, 'Clips');
+    const full = path.resolve(file);
+    if (path.dirname(full) !== path.resolve(dir) || !/\.mp4$/i.test(full)) return null;
+    try {
+      const stat = await fs.promises.stat(full);
+      const session: RecordingSession = {
+        version: 1,
+        created: stat.mtime.toISOString(),
+        fps: 30,
+        display: { width: 0, height: 0, scale: 1 },
+        area: null,
+        files: { screen: path.basename(full) },
+        offsets: {},
+        duration: 0,
+        cursor: null,
+      };
+      return { dir: '', session, files: { screen: { path: full, url: mediaUrl(full) } }, cursor: null };
+    } catch {
+      return null;
+    }
   }
 
   private async readRecording(name: string): Promise<SessionMedia | null> {

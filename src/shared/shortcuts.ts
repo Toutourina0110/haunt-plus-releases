@@ -1,4 +1,4 @@
-export const SHORTCUT_KEYS = ['shortcutArea', 'shortcutScreen', 'shortcutClipboard', 'shortcutRecordArea', 'shortcutRecordScreen'] as const;
+export const SHORTCUT_KEYS = ['shortcutArea', 'shortcutScreen', 'shortcutClipboard', 'shortcutRecordArea', 'shortcutRecordScreen', 'shortcutReplay'] as const;
 export type ShortcutKey = (typeof SHORTCUT_KEYS)[number];
 export type ShortcutStatus = Record<ShortcutKey, boolean>;
 
@@ -8,9 +8,10 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutKey, string> = {
   shortcutClipboard: 'Control+Alt+U',
   shortcutRecordArea: 'Control+Alt+R',
   shortcutRecordScreen: 'Control+Alt+E',
+  shortcutReplay: 'Control+Alt+C',
 };
 
-export const RESERVED_SHORTCUTS = ['Control+Alt+H'];
+export const RESERVED_SHORTCUTS = ['Control+Alt+H', 'Control+Shift+F'];
 
 const MODIFIERS = ['Control', 'Alt', 'Shift', 'Super'];
 const KEY = /^([A-Z0-9]|F([1-9]|1\d|2[0-4])|PrintScreen|Space|Insert|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/;

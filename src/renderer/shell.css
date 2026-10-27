@@ -37,7 +37,7 @@ body {
   background: color-mix(in srgb, var(--accent) 16%, var(--bg));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
   transform: translateX(calc(var(--index, 0) * 34px));
-  transition: transform var(--swap) var(--ease-swap);
+  transition: transform var(--pill-ms, var(--swap)) var(--pill-ease, var(--ease-swap));
 }
 
 .switch-btn {
@@ -195,6 +195,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .switch-pill {
+    transition: none;
+  }
+
   .progress[data-on='1']::after {
     animation: none;
     width: 100%;
@@ -271,4 +275,55 @@ body {
   background: transparent;
   color: var(--fg);
   font: inherit;
+}
+
+.title.finding {
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.title.finding .title-edit {
+  display: none;
+}
+
+.find {
+  gap: 4px;
+  padding-right: 4px;
+}
+
+.find-count {
+  flex: none;
+  min-width: 36px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.find-count.none {
+  color: var(--danger);
+}
+
+.find-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.find-btn:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  color: var(--fg);
+}
+
+.find-btn svg {
+  width: 16px;
+  height: 16px;
 }

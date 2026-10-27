@@ -21,6 +21,7 @@ const PATHS = {
   back: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M14.657 6.343 9 12l5.657 5.657"/>',
   video: '<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><rect x="3" y="6" width="13" height="12" rx="3"/><path d="m16 10 5-3v10l-5-3"/></g>',
   pen: '<path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/>',
+  trash: '<path fill="currentColor" fill-rule="evenodd" d="M9.5 2h5a1 1 0 0 1 1 1v1H20a1 1 0 1 1 0 2h-1.07l-.86 12.04A3 3 0 0 1 15.08 21H8.92a3 3 0 0 1-2.99-2.96L5.07 6H4a1 1 0 0 1 0-2h4.5V3a1 1 0 0 1 1-1Zm.5 7a.75.75 0 0 0-.75.75v6.5a.75.75 0 0 0 1.5 0v-6.5A.75.75 0 0 0 10 9Zm4 0a.75.75 0 0 0-.75.75v6.5a.75.75 0 0 0 1.5 0v-6.5A.75.75 0 0 0 14 9Z" clip-rule="evenodd"/>',
   help: '<circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2" d="M9.6 9.3a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1.1.9-1.1 1.6v.3"/><circle cx="12" cy="16.8" r="1.2" fill="currentColor"/>',
 } as const;
 

@@ -1,7 +1,7 @@
 {
   "name": "haunt-plus-desktop",
   "productName": "haunt+",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "haunt.gg and haunt tools in one Windows app",
   "author": "toutourina",
   "license": "UNLICENSED",
@@ -18,10 +18,13 @@
     "koffi": "3.3.3"
   },
   "devDependencies": {
+    "@types/d3-delaunay": "6.0.4",
+    "d3-delaunay": "6.0.4",
     "electron": "^44.9.2",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "gifenc": "1.0.3",
+    "gsap": "3.15.0",
     "mediabunny": "1.62.1",
     "typescript": "^5.9.3"
   },

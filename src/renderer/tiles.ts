@@ -1,5 +1,5 @@
 import type { TileParams } from '../shared/tile-params';
-import type { Box } from '../shared/types';
+import type { Box, PageShot } from '../shared/types';
 
 const MAP = 512;
 const MIN_ELEMENTS = 8;
@@ -14,12 +14,24 @@ export interface Mark {
   cells: Map<number, Cell[]>;
 }
 
-interface Cell {
+export interface Cell {
   x: number;
   y: number;
   s: number;
   a: number;
 }
+
+export function logoSize(w: number, h: number): number {
+  return Math.min(280, Math.max(120, Math.min(w, h) * 0.34));
+}
+
+export function markRect(mark: Mark, w: number, h: number): { x: number; y: number; k: number } {
+  const { x0, y0, x1, y1 } = mark.box;
+  const k = logoSize(w, h) / Math.max(x1 - x0, y1 - y0);
+  return { x: w / 2 - ((x0 + x1) / 2) * k, y: h / 2 - ((y0 + y1) / 2) * k, k };
+}
+
+export const MARK_MAP = MAP;
 
 const smooth = (a: number, b: number, v: number): number => {
   const u = clamp01((v - a) / (b - a));
@@ -151,7 +163,7 @@ function grid(mark: Mark, step: number): Array<Cell & { p: number }> {
   return out;
 }
 
-function sampleCells(mark: Mark, n: number): Cell[] {
+export function sampleCells(mark: Mark, n: number): Cell[] {
   const cached = mark.cells.get(n);
   if (cached) return cached;
   let lo = 1.5;
@@ -247,6 +259,17 @@ function match(a: Pt[], b: Pt[]): Int32Array {
 export interface Shot {
   bitmap: ImageBitmap | null;
   boxes: Box[];
+}
+
+export async function decodeShot(shot: PageShot | null): Promise<Shot | null> {
+  if (!shot) return null;
+  const lag = Date.now() - shot.at;
+  const start = performance.now();
+  const bitmap = await createImageBitmap(new Blob([shot.jpeg as BlobPart], { type: 'image/jpeg' })).catch(() => null);
+  console.debug(
+    `shot ${bitmap?.width}x${bitmap?.height}: encode + transfer ${lag} ms, decode ${Math.round(performance.now() - start)} ms`,
+  );
+  return { bitmap, boxes: shot.boxes };
 }
 
 export interface MorphOptions {
@@ -345,7 +368,7 @@ export class TileMorph {
 
     const a = o.from.mark;
     const b = o.kind === 'intro' ? a : o.to.mark;
-    this.logo = { size: Math.min(280, Math.max(120, Math.min(this.w, this.h) * 0.34)), a, b };
+    this.logo = { size: logoSize(this.w, this.h), a, b };
     for (let i = 0; i <= SHADES; i++) {
       const k = i / SHADES;
       this.shades.push(`rgb(${a.rgb.map((v, j) => Math.round(lerp(v, b.rgb[j], k))).join(',')})`);
@@ -585,12 +608,11 @@ export class TileMorph {
   }
 
   private mark(mark: Mark, alpha: number): void {
-    const { x0, y0, x1, y1 } = mark.box;
-    const k = this.logo.size / Math.max(x1 - x0, y1 - y0);
+    const r = markRect(mark, this.w, this.h);
     const { ctx, dpr } = this;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = alpha;
-    ctx.drawImage(mark.image, this.w / 2 - ((x0 + x1) / 2) * k, this.h / 2 - ((y0 + y1) / 2) * k, MAP * k, MAP * k);
+    ctx.drawImage(mark.image, r.x, r.y, MAP * r.k, MAP * r.k);
   }
 
   private tile(tile: Tile, t: number, hide: number): void {

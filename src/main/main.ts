@@ -24,6 +24,7 @@ import { MediaGrants, registerMediaScheme, setupMediaProtocol } from './media-pr
 import { Recorder } from './recorder';
 import { ImageHost } from './imagehost';
 import { isPopupAction, Popups } from './popups';
+import { Replay } from './replay';
 import { isWebUrl, parseUrl } from './routing';
 import { cleanPatch, SettingsStore } from './settings';
 import { Updater } from './updater';
@@ -38,9 +39,11 @@ const GLOBAL_SHORTCUT = 'Control+Alt+H';
 let quitting = false;
 let mainWindow: MainWindow | null = null;
 let popups: Popups | null = null;
+let replay: Replay | null = null;
 let tray: Tray | null = null;
 
 registerMediaScheme();
+app.commandLine.appendSwitch('disable-features', 'SpareRendererForSitePerProcess');
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -66,6 +69,7 @@ async function boot(): Promise<void> {
   setupSiteSession(sites);
   lockDownUiSession(session.defaultSession, (wc, permission) => {
     if (permission !== 'media' && permission !== 'display-capture') return false;
+    if (permission === 'media' && replay?.isPage(wc)) return true;
     return !!recorder?.isPage(wc) || (permission === 'media' && !!wc && !!mainWindow?.isImagesView(wc));
   });
   const videoRoot = () => settings.value('videoFolder') || path.join(app.getPath('videos'), 'haunt+');
@@ -146,6 +150,12 @@ async function boot(): Promise<void> {
       }
     },
   });
+  replay = new Replay({
+    locale: currentLocale,
+    settings,
+    videoRoot,
+    openClip: (file) => videos.open({ clip: file }),
+  });
   const recordFromApp = async (kind: 'area' | 'screen') => {
     if (recorder?.recording) return recorder.command('stop');
     mainWindow?.win.hide();
@@ -193,6 +203,7 @@ async function boot(): Promise<void> {
     shortcutClipboard: () => void imagehost.uploadClipboard(),
     shortcutRecordArea: () => void recorder?.toggle('area'),
     shortcutRecordScreen: () => void recorder?.toggle('screen'),
+    shortcutReplay: () => void replay?.save(),
   };
   let shortcutStatus = Object.fromEntries(SHORTCUT_KEYS.map((key) => [key, false])) as ShortcutStatus;
   let shortcutsPaused = false;
@@ -229,6 +240,10 @@ async function boot(): Promise<void> {
       applyShortcut();
     }
     if (patch.hauntPlus !== undefined && patch.hauntPlus !== before.hauntPlus) mainWindow?.reloadHaunt();
+    const replayKeys = ['replayEnabled', 'replayMode', 'replaySeconds', 'replayMic'] as const;
+    if (replayKeys.some((key) => patch[key] !== undefined && patch[key] !== before[key]) || (patch.recordMic !== undefined && before.replayMic)) {
+      void replay?.apply();
+    }
     if (patch.language && patch.language !== before.language) {
       locale = resolveLocale(patch.language, app.getLocale());
       tray?.setContextMenu(trayMenu(locale));
@@ -238,6 +253,7 @@ async function boot(): Promise<void> {
     }
     mainWindow?.sendToOverlay(CH.settingsChanged, settings.get());
     mainWindow?.sendToImages(CH.settingsChanged, settings.get());
+    mainWindow?.sendToShell(CH.settingsChanged, settings.get());
   };
 
   const clearData = async () => {
@@ -290,6 +306,7 @@ async function boot(): Promise<void> {
             if (data === 'clipboard') void imagehost.uploadClipboard();
             if (data === 'record-area' || data === 'record-screen') void recordFromApp(data === 'record-area' ? 'area' : 'screen');
             if (data === 'video-editor') videos.open();
+            if (data === 'replay-save') void replay?.save();
             if (data === 'video-folder') void chooseVideoFolder();
             return;
           case CH.imagehostAnnotate:
@@ -310,6 +327,7 @@ async function boot(): Promise<void> {
   ipcMain.handle(CH.imagehostFolders, (event) => (fromImages(event) ? imagehost.folders() : null));
   ipcMain.handle(CH.imagehostUpload, (event, files: unknown) => (fromImages(event) ? imagehost.uploadFiles(files) : []));
   ipcMain.handle(CH.imagehostKey, (event, key: unknown) => (fromImages(event) ? imagehost.setKey(key) : null));
+  ipcMain.handle(CH.imagehostDelete, (event, item: unknown) => (fromImages(event) ? imagehost.deleteUpload(item, mainWindow?.win ?? null) : null));
 
   const chooseVideoFolder = async () => {
     const win = mainWindow?.win;
@@ -345,7 +363,10 @@ async function boot(): Promise<void> {
   applyLoginItem();
   applyShortcut();
 
+  void replay.apply();
+
   app.on('will-quit', () => {
+    replay?.stop();
     globalShortcut.unregisterAll();
     settings.flush();
   });

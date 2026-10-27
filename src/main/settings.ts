@@ -26,11 +26,17 @@ const DEFAULTS: Settings = {
   videoFolder: '',
   imagehostShortcuts: true,
   ...DEFAULT_SHORTCUTS,
+  replayEnabled: false,
+  replayMode: 'screen',
+  replaySeconds: 30,
+  replayMic: true,
   tourAppSeen: false,
   tourImagesSeen: false,
   externalLinks: 'popup',
   hauntPlus: true,
   globalShortcut: true,
+  executionSound: true,
+  executionVolume: 60,
   trayHintShown: false,
   maximized: false,
   bounds: null,
@@ -39,14 +45,16 @@ const DEFAULTS: Settings = {
 const ENUMS: Partial<Record<keyof Settings, readonly string[]>> = {
   startPage: ['haunt', 'tools', 'images', 'last'],
   lastSite: ['haunt', 'tools', 'images'],
-  animations: ['full', 'simple', 'off'],
+  animations: ['full', 'travelling', 'wave', 'portal', 'prism', 'fracture', 'dust', 'execution', 'simple', 'off'],
   transitionSpeed: ['fast', 'medium', 'long'],
   language: ['auto', 'fr', 'en', 'de', 'pt-BR'],
   imagehostLink: ['page', 'raw'],
   externalLinks: ['popup', 'browser'],
+  replayMode: ['screen', 'audio'],
 };
 
 const BOOLEANS: Array<keyof Settings> = [
+  'executionSound',
   'openAtLogin',
   'closeToTray',
   'hauntPlus',
@@ -60,6 +68,8 @@ const BOOLEANS: Array<keyof Settings> = [
   'recordCursor',
   'recordClicks',
   'recordAutoZoom',
+  'replayEnabled',
+  'replayMic',
   'tourAppSeen',
   'tourImagesSeen',
 ];
@@ -88,6 +98,10 @@ function clean(input: unknown, allowed: readonly (keyof Settings)[]): Partial<Se
       if (typeof value === 'string' && value.length < 1000) out[key] = value;
     } else if (key === 'recordFps') {
       if (value === 30 || value === 60) out[key] = value;
+    } else if (key === 'executionVolume') {
+      if (typeof value === 'number' && Number.isFinite(value)) out[key] = Math.round(Math.min(100, Math.max(0, value)));
+    } else if (key === 'replaySeconds') {
+      if (value === 15 || value === 30 || value === 60 || value === 120) out[key] = value;
     } else if (key === 'recordMic' || key === 'recordWebcam') {
       if (typeof value === 'string' && /^[\w+/=.-]{0,200}$/.test(value)) out[key] = value;
     } else if (key === 'font') {

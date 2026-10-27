@@ -5,7 +5,13 @@ export type TabId = SiteId | 'images';
 export const TABS: readonly TabId[] = ['haunt', 'tools', 'images'];
 export type Locale = 'fr' | 'en' | 'de' | 'pt-BR';
 export type LanguageSetting = 'auto' | Locale;
-export type AnimationMode = 'full' | 'simple' | 'off';
+export const STAGE_MODES = ['travelling', 'wave', 'portal'] as const;
+export type StageMode = (typeof STAGE_MODES)[number];
+export const GL_MODES = ['prism', 'fracture', 'dust', 'execution'] as const;
+export type GlMode = (typeof GL_MODES)[number];
+export type AnimationMode = 'full' | StageMode | GlMode | 'simple' | 'off';
+export const isStageMode = (mode: string): mode is StageMode => (STAGE_MODES as readonly string[]).includes(mode);
+export const isGlMode = (mode: string): mode is GlMode => (GL_MODES as readonly string[]).includes(mode);
 export type TransitionSpeed = 'fast' | 'medium' | 'long';
 export type StartPage = TabId | 'last';
 export type LinkTarget = 'popup' | 'browser';
@@ -43,6 +49,11 @@ export interface Settings {
   shortcutClipboard: string;
   shortcutRecordArea: string;
   shortcutRecordScreen: string;
+  shortcutReplay: string;
+  replayEnabled: boolean;
+  replayMode: 'screen' | 'audio';
+  replaySeconds: 15 | 30 | 60 | 120;
+  replayMic: boolean;
   recordFps: 30 | 60;
   recordSystemAudio: boolean;
   recordMic: string;
@@ -56,6 +67,8 @@ export interface Settings {
   externalLinks: LinkTarget;
   hauntPlus: boolean;
   globalShortcut: boolean;
+  executionSound: boolean;
+  executionVolume: number;
   trayHintShown: boolean;
   maximized: boolean;
   bounds: WindowBounds | null;
@@ -78,6 +91,11 @@ export const EDITABLE_KEYS = [
   'shortcutClipboard',
   'shortcutRecordArea',
   'shortcutRecordScreen',
+  'shortcutReplay',
+  'replayEnabled',
+  'replayMode',
+  'replaySeconds',
+  'replayMic',
   'recordFps',
   'recordSystemAudio',
   'recordMic',
@@ -90,6 +108,8 @@ export const EDITABLE_KEYS = [
   'externalLinks',
   'hauntPlus',
   'globalShortcut',
+  'executionSound',
+  'executionVolume',
 ] as const;
 
 export type EditableKey = (typeof EDITABLE_KEYS)[number];
@@ -144,18 +164,40 @@ export interface UpdateNoticePayload {
   update: UpdateStatus;
 }
 
+export interface Card {
+  box: Box;
+  fill: string;
+}
+
 export interface PageShot {
   jpeg: Uint8Array;
   boxes: Box[];
+  cards: Card[];
+  at: number;
 }
 
 export interface TransitionPayload {
   kind: 'switch' | 'intro';
-  mode: 'full' | 'simple';
+  mode: 'full' | 'simple' | StageMode | GlMode;
   duration: number;
+  speed: TransitionSpeed;
   fromSite: TabId | null;
   toSite: TabId;
   from: PageShot | null;
+  to: PageShot | null;
+  origin: Box | null;
+}
+
+export interface TransitionChainPayload {
+  mode: StageMode;
+  speed: TransitionSpeed;
+  fromSite: TabId;
+  toSite: TabId;
+  origin: Box | null;
+}
+
+export interface TransitionPlayPayload {
+  tab: TabId;
   to: PageShot | null;
 }
 
@@ -183,6 +225,7 @@ export type ImageError =
   | 'FILE_TOO_LARGE'
   | 'NO_FILE'
   | 'NOT_FOUND'
+  | 'NO_DELETE'
   | 'NETWORK'
   | 'STORAGE'
   | 'FAILED';
@@ -222,6 +265,7 @@ export interface ImageQuery {
 
 export type ImageListResult = { ok: true; items: ImageItem[]; total: number; offset: number } | { ok: false; error: ImageError };
 export type ImageFoldersResult = { ok: true; items: ImageFolder[] } | { ok: false; error: ImageError };
+export type ImageDeleteResult = { ok: true } | { ok: false; error?: ImageError };
 
 export interface OutgoingFile {
   name: string;
@@ -286,6 +330,17 @@ export interface CaptureRect {
   h: number;
 }
 
+export interface FindQuery {
+  text: string;
+  forward: boolean;
+  first: boolean;
+}
+
+export interface FindResult {
+  active: number;
+  matches: number;
+}
+
 export type NavAction = 'back' | 'forward' | 'reload' | 'home';
 export type PopupAction = Exclude<NavAction, 'home'> | 'copy' | 'browser';
 
@@ -330,6 +385,28 @@ export interface RecBarInit {
 export interface RecBarState {
   paused: boolean;
   elapsed: number;
+}
+
+export interface ReplayInit {
+  mode: 'screen' | 'audio';
+  seconds: number;
+  fps: number;
+  mic: boolean;
+  micId: string;
+  screens: Array<{ sourceId: string; width: number; height: number }>;
+}
+
+export interface ReplaySaveRequest {
+  id: number;
+  screen: number;
+}
+
+export interface ReplaySaved {
+  id: number;
+  bytes?: Uint8Array;
+  ext?: 'mp4' | 'm4a';
+  thumb?: string;
+  error?: string;
 }
 
 export interface RecordingSession {

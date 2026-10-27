@@ -38,7 +38,7 @@
     ];
     const FONT_WEIGHT_VALUES = FONT_WEIGHTS.map(w => w.v);
 
-    const SCRIPT_VERSION = '4.16.0';
+    const SCRIPT_VERSION = '4.17.0';
     const HIST_KEY = 'haunt_reciprocity_history_v1';
     const INTRO_FLAG = 'haunt_intro_seen_v1';
     const INTRO_PHRASE = 'I UNDERSTAND';
@@ -471,7 +471,7 @@
         return out;
     }
 
-    const SCOPE_RE = /^\/(?:[a-z]{2}\/)?(dashboard|acp)(\/|$)/;
+    const SCOPE_RE = /^\/(?:[a-z]{2}\/)?(dashboard|acp|webmail)(\/|$)/;
 
     function inScope() {
         return SCOPE_RE.test(location.pathname);

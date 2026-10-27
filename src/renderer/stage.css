@@ -1,0 +1,75 @@
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--stage-bg, var(--raised));
+}
+
+.panel {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.panel[data-state='inactive'] {
+  visibility: hidden;
+}
+
+.panel[data-state='entering'] {
+  z-index: 2;
+}
+
+.panel[data-state='leaving'] {
+  z-index: 1;
+}
+
+[data-transition='travelling'] > .panel {
+  clip-path: inset(0 round var(--radius, 0px));
+  filter: brightness(var(--dim, 1)) blur(var(--blur, 0px));
+}
+
+[data-transition='travelling'] > .panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: var(--radius, 0px);
+  box-shadow: inset 0 0 0 1px var(--line);
+  opacity: var(--edge, 0);
+  pointer-events: none;
+}
+
+[data-transition='wave'] > .panel[data-state='entering'] {
+  --wave: 1.22;
+  --wave-angle: 100deg;
+  --wave-edge: 22%;
+  mask-image: linear-gradient(
+    var(--wave-angle),
+    #000 calc(var(--wave) * 100% - var(--wave-edge)),
+    transparent calc(var(--wave) * 100%)
+  );
+}
+
+[data-transition='wave'] > .panel[data-state='leaving'] {
+  filter: brightness(var(--dim, 1));
+}
+
+.panel-base,
+.panel-card > canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.panel-content,
+.panel-cards {
+  position: absolute;
+  inset: 0;
+}
+
+.panel-card {
+  position: absolute;
+}

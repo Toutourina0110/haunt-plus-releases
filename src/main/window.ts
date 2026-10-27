@@ -4,6 +4,7 @@ import {
   clipboard,
   nativeTheme,
   screen,
+  systemPreferences,
   WebContentsView,
   type HandlerDetails,
   type Input,
@@ -16,8 +17,12 @@ import { readFileSync } from 'node:fs';
 import { CH } from '../shared/channels';
 import { palette } from '../shared/palette';
 import { SPEED_MS } from '../shared/tile-params';
+import { EXECUTION } from '../renderer/motion/execution-params';
 import {
+  isStageMode,
   TABS,
+  type AnimationMode,
+  type Box,
   type Locale,
   type LogoFile,
   type MenuAction,
@@ -26,12 +31,16 @@ import {
   type SettingsOpenPayload,
   type ShellState,
   type SiteId,
+  type StageMode,
   type TabId,
   type TourStartPayload,
+  type TransitionChainPayload,
   type TransitionPayload,
+  type TransitionPlayPayload,
   type UiInit,
   type UpdateNoticePayload,
   type UpdateStatus,
+  type FindQuery,
 } from '../shared/types';
 import type { Popups } from './popups';
 import { decideNavigation, decideWindowOpen, siteOf, SITES, type Decision } from './routing';
@@ -55,7 +64,7 @@ const MENU_W = 76;
 const MENU_H = 296;
 const EDGE = 6;
 const SPLASH_MIN = 900;
-const HAUNT_PLUS_SCOPE = /^\/(?:[a-z]{2}\/)?(dashboard|acp)(\/|$)/;
+const HAUNT_PLUS_SCOPE = /^\/(?:[a-z]{2}\/)?(dashboard|acp|webmail)(\/|$)/;
 const MODIFIERS = ['Control', 'Shift', 'Alt', 'Meta'];
 const LOGO_FILES: Record<TabId, [string, string]> = {
   haunt: ['assets/haunt.png', 'image/png'],
@@ -64,7 +73,7 @@ const LOGO_FILES: Record<TabId, [string, string]> = {
 };
 
 type OverlayMode = 'hidden' | 'menu' | 'full' | 'tour';
-type Run = { target: TabId; aborted: boolean };
+type Run = { target: TabId; aborted: boolean; stage: boolean; next: TabId | null; wake: (() => void) | null };
 type Signal = typeof CH.overlayReady | typeof CH.overlayCovered | typeof CH.overlayDone | typeof CH.settingsClosed;
 
 export interface MainWindowDeps {
@@ -99,7 +108,7 @@ export class MainWindow {
   private poll: NodeJS.Timeout | null = null;
   private boundsTimer: NodeJS.Timeout | null = null;
   private readonly signals = new Map<Signal, () => void>();
-  private readonly shots: Partial<Record<TabId, PageShot>> = {};
+  private readonly rearms = new Map<Signal, (timeout: number) => void>();
   private run: Run | null = null;
   private queued: TabId | null = null;
   private marks: Record<TabId, LogoFile> | null = null;
@@ -127,7 +136,7 @@ export class MainWindow {
       tools: new WebContentsView({ webPreferences: sitePrefs(deps.session) }),
       images: new WebContentsView({ webPreferences: uiPrefs() }),
     };
-    this.overlay = new WebContentsView({ webPreferences: uiPrefs() });
+    this.overlay = new WebContentsView({ webPreferences: { ...uiPrefs(), autoplayPolicy: 'no-user-gesture-required' } });
     this.overlay.setBackgroundColor('#00000000');
 
     for (const tab of [...TABS.filter((t) => t !== this.active), this.active]) {
@@ -138,6 +147,11 @@ export class MainWindow {
     this.layout();
 
     for (const id of ['haunt', 'tools'] as const) this.wireSite(id);
+    for (const view of Object.values(this.views)) {
+      view.webContents.on('found-in-page', (_event, result) => {
+        if (result.finalUpdate) this.win.webContents.send(CH.findResult, { active: result.activeMatchOrdinal, matches: result.matches });
+      });
+    }
     this.wireImages();
     this.wireWindow();
   }
@@ -160,7 +174,7 @@ export class MainWindow {
     for (const tab of TABS) {
       const wc = this.views[tab].webContents;
       if (isSiteId(tab)) load(wc, SITES[tab].home);
-      else wc.loadFile(rendererFile('imagehost.html')).catch(() => {});
+      else if (tab === this.active) void this.loadImages();
     }
     const first = this.views[this.active];
     await waitForStop(first.webContents, 8000);
@@ -169,17 +183,18 @@ export class MainWindow {
     const mode = this.deps.settings.value('animations');
     const play = mode !== 'off' && this.win.isVisible();
     const shot = play ? await pageShot(first) : null;
-    if (shot) this.shots[this.active] = shot;
-    this.run = { target: this.active, aborted: false };
+    this.run = { target: this.active, aborted: false, stage: false, next: null, wake: null };
     const done = this.expect(CH.overlayDone, this.duration() + 3000);
     this.sendOverlay(CH.transition, {
       kind: 'intro',
-      mode: mode === 'off' ? 'simple' : mode,
+      mode: mode === 'off' || mode === 'simple' ? 'simple' : 'full',
       duration: this.duration(),
+      speed: this.deps.settings.value('transitionSpeed'),
       fromSite: null,
       toSite: this.active,
       from: null,
       to: shot,
+      origin: null,
     } satisfies TransitionPayload);
     await done;
 
@@ -188,6 +203,7 @@ export class MainWindow {
     this.busy = false;
     this.endRun();
     this.startPolling();
+    void this.captureHidden();
     if (!this.deps.settings.value('tourAppSeen') && this.win.isVisible()) void this.startAppTour();
   }
 
@@ -255,6 +271,9 @@ export class MainWindow {
       case CH.settingsClosed:
         if (sender === this.overlay.webContents) this.onSettingsClosed();
         break;
+      case CH.warmTab:
+        if (sender === this.win.webContents && data === 'images') void this.loadImages();
+        break;
       case CH.switchSite:
         if (TABS.includes(data as TabId)) void this.switchTo(data as TabId);
         break;
@@ -266,6 +285,12 @@ export class MainWindow {
         break;
       case CH.navTo:
         if (sender === this.win.webContents && typeof data === 'string') this.goTo(data);
+        break;
+      case CH.findQuery:
+        if (sender === this.win.webContents) this.find(data);
+        break;
+      case CH.findStop:
+        if (sender === this.win.webContents) this.stopFind();
         break;
       case CH.menuAction:
         if (sender === this.overlay.webContents) void this.onMenu(data as MenuAction);
@@ -285,6 +310,10 @@ export class MainWindow {
     }
   }
 
+  sendToShell(channel: string, data?: unknown): void {
+    if (!this.win.webContents.isDestroyed()) this.win.webContents.send(channel, data);
+  }
+
   sendToImages(channel: string, data?: unknown): void {
     const wc = this.views.images.webContents;
     if (!wc.isDestroyed()) wc.send(channel, data);
@@ -295,11 +324,19 @@ export class MainWindow {
     void this.switchTo(site, url);
   }
 
-  async switchTo(target: TabId, url?: string): Promise<void> {
+  async switchTo(target: TabId, url?: string, force?: AnimationMode): Promise<void> {
     const view = this.views[target];
     if (url && isSiteId(target) && view.webContents.getURL() !== url) load(view.webContents, url);
     if (this.run) {
-      if (target !== this.run.target) this.queued = target;
+      const run = this.run;
+      if (run.stage && !run.aborted) {
+        if (target !== (run.next ?? run.target)) {
+          run.next = target;
+          run.wake?.();
+        }
+        return;
+      }
+      if (target !== run.target) this.queued = target;
       this.abortTransition();
       return;
     }
@@ -313,25 +350,29 @@ export class MainWindow {
     this.busy = true;
     this.pending = target;
     this.pushState();
+    if (target === 'images' && !this.imagesLoaded) await Promise.race([this.loadImages(), delay(1500)]);
     const from = this.views[this.active];
-    const mode = this.deps.settings.value('animations');
+    const mode = force ?? this.mode();
 
     try {
       if (mode === 'off' || !this.win.isVisible() || this.win.isMinimized()) {
         this.swapTo(target);
         return;
       }
+      if (isStageMode(mode)) {
+        await this.stageSwitch(target, mode, url);
+        return;
+      }
 
-      const run: Run = { target, aborted: false };
+      const run: Run = { target, aborted: false, stage: false, next: null, wake: null };
       this.run = run;
-      const a = await pageShot(from);
-      if (a) this.shots[this.active] = a;
+      const [a, origin] = await Promise.all([pageShot(from), mode === 'fracture' || mode === 'execution' ? this.tabRect(target) : null]);
       if (run.aborted) {
         this.swapTo(target);
         return;
       }
 
-      const duration = this.duration();
+      const duration = mode === 'execution' ? EXECUTION.dark.end * 1000 : this.duration();
       this.showOverlay('full');
       const covered = this.expect(CH.overlayCovered, 600);
       const done = this.expect(CH.overlayDone, duration + 3000);
@@ -339,15 +380,17 @@ export class MainWindow {
         kind: 'switch',
         mode,
         duration,
+        speed: this.deps.settings.value('transitionSpeed'),
         fromSite: this.active,
         toSite: target,
         from: a,
         to: null,
+        origin,
       } satisfies TransitionPayload);
       await covered;
 
       this.swapTo(target);
-      if (!run.aborted) void this.sendTarget(run, view, target, url);
+      if (!run.aborted) void this.sendTarget(run, target, url);
       await done;
       this.hideOverlay();
     } finally {
@@ -357,11 +400,127 @@ export class MainWindow {
     }
   }
 
-  private async sendTarget(run: Run, view: WebContentsView, tab: TabId, url?: string): Promise<void> {
+  private async stageSwitch(first: TabId, mode: StageMode, url?: string): Promise<void> {
+    const run: Run = { target: first, aborted: false, stage: true, next: null, wake: null };
+    this.run = run;
+    const [a, firstOrigin] = await Promise.all([pageShot(this.views[this.active]), this.tabRect(first)]);
+    if (run.next) {
+      run.target = run.next;
+      run.next = null;
+      this.pending = run.target;
+      this.pushState();
+    }
+    if (run.aborted || !a || run.target === this.active) {
+      if (run.target !== this.active) this.swapTo(run.target);
+      return;
+    }
+    const origin = run.target === first ? firstOrigin : await this.tabRect(run.target);
+    const speed = this.deps.settings.value('transitionSpeed');
+    const timeout = this.duration() + 3000;
+
+    this.showOverlay('full');
+    const done = this.expect(CH.overlayDone, timeout);
+    let covered = this.expect(CH.overlayCovered, 600);
+    this.sendOverlay(CH.transition, {
+      kind: 'switch',
+      mode,
+      duration: this.duration(),
+      speed,
+      fromSite: this.active,
+      toSite: run.target,
+      from: a,
+      to: null,
+      origin,
+    } satisfies TransitionPayload);
+    await covered;
+    this.swapTo(run.target);
+    void this.sendTarget(run, run.target, url);
+
+    let finished = false;
+    void done.then(() => {
+      finished = true;
+      run.wake?.();
+    });
+    while (!finished) {
+      await new Promise<void>((resolve) => {
+        run.wake = resolve;
+        if (finished || run.next) resolve();
+      });
+      run.wake = null;
+      const next = run.next;
+      if (finished || run.aborted || !next) continue;
+      run.next = null;
+      if (next === run.target) continue;
+      const fromSite = run.target;
+      run.target = next;
+      this.pending = next;
+      this.pushState();
+      covered = this.expect(CH.overlayCovered, 300);
+      this.rearm(CH.overlayDone, timeout);
+      this.sendOverlay(CH.transitionChain, {
+        mode,
+        speed,
+        fromSite,
+        toSite: next,
+        origin: await this.tabRect(next),
+      } satisfies TransitionChainPayload);
+      await covered;
+      this.swapTo(next);
+      void this.sendTarget(run, next);
+    }
+    if (run.next && run.next !== run.target) this.queued = run.next;
+    this.hideOverlay();
+  }
+
+  private async sendTarget(run: Run, tab: TabId, url?: string): Promise<void> {
+    const view = this.views[tab];
     if (url) await waitForStop(view.webContents, 700);
     const shot = await this.freshShot(view);
-    if (shot) this.shots[tab] = shot;
-    if (this.run === run) this.sendOverlay(CH.transitionPlay, { to: shot ?? this.shots[tab] ?? null });
+    if (this.run === run && run.target === tab) {
+      this.sendOverlay(CH.transitionPlay, { tab, to: shot } satisfies TransitionPlayPayload);
+    }
+  }
+
+  private imagesLoaded = false;
+
+  private loadImages(): Promise<void> {
+    if (this.imagesLoaded) return Promise.resolve();
+    this.imagesLoaded = true;
+    return this.views.images.webContents.loadFile(rendererFile('imagehost.html')).catch(() => {});
+  }
+
+  private async captureHidden(): Promise<void> {
+    for (const tab of TABS) {
+      if (tab === this.active || (tab === 'images' && !this.imagesLoaded)) continue;
+      const view = this.views[tab];
+      await waitForStop(view.webContents, 4000);
+      if (this.run || tab === this.active) continue;
+      const shot = await pageShot(view, true);
+      if (shot && !this.run && tab !== this.active) {
+        this.sendOverlay(CH.shotCache, { tab, to: shot } satisfies TransitionPlayPayload);
+      }
+    }
+  }
+
+  private async tabRect(tab: TabId): Promise<Box | null> {
+    const code = `(() => {
+      const b = document.querySelector('.switch-btn[data-site="${tab}"]');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return [r.x, r.y, r.width, r.height];
+    })()`;
+    try {
+      const r = (await this.win.webContents.executeJavaScript(code)) as unknown;
+      if (!Array.isArray(r) || r.length !== 4 || !r.every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
+      return { x: r[0], y: r[1] - TITLEBAR, w: r[2], h: r[3] };
+    } catch {
+      return null;
+    }
+  }
+
+  private mode(): AnimationMode {
+    const mode = this.deps.settings.value('animations');
+    return isStageMode(mode) && systemPreferences.getAnimationSettings().prefersReducedMotion ? 'simple' : mode;
   }
 
   private async freshShot(view: WebContentsView): Promise<PageShot | null> {
@@ -433,6 +592,23 @@ export class MainWindow {
     const wc = this.views[this.active].webContents;
     load(wc, url.href);
     wc.focus();
+  }
+
+  private find(raw: unknown): void {
+    const q = (raw && typeof raw === 'object' ? raw : {}) as Partial<FindQuery>;
+    const wc = this.views[this.active].webContents;
+    const text = typeof q.text === 'string' ? q.text.slice(0, 200) : '';
+    if (!text) {
+      wc.stopFindInPage('clearSelection');
+      this.win.webContents.send(CH.findResult, { active: 0, matches: 0 });
+      return;
+    }
+    wc.findInPage(text, { forward: q.forward !== false, findNext: q.first === true });
+  }
+
+  private stopFind(): void {
+    for (const view of Object.values(this.views)) view.webContents.stopFindInPage('clearSelection');
+    this.views[this.active].webContents.focus();
   }
 
   copyLink(): void {
@@ -664,19 +840,28 @@ export class MainWindow {
     const ctrl = input.control || input.meta;
     const key = input.key;
     const lower = key.toLowerCase();
-    if (this.run && !MODIFIERS.includes(key)) this.abortTransition();
-    const target = this.owns(wc) || this.isSite(wc) ? this.views[this.active].webContents : wc;
-
     if (ctrl && !input.shift && !input.alt && ['1', '2', '3'].includes(key)) {
       void this.switchTo(TABS[Number(key) - 1]);
       return true;
     }
     if (ctrl && key === 'Tab') {
-      void this.switchTo(this.nextTab(this.run?.target ?? this.active));
+      void this.switchTo(this.nextTab(this.run ? (this.run.next ?? this.run.target) : this.active));
       return true;
     }
+    if (ctrl && input.shift && !input.alt && lower === 'f') {
+      void this.switchTo(this.nextTab(this.run ? (this.run.next ?? this.run.target) : this.active), undefined, 'execution');
+      return true;
+    }
+    if (this.run && !MODIFIERS.includes(key)) this.abortTransition();
+    const target = this.owns(wc) || this.isSite(wc) ? this.views[this.active].webContents : wc;
+
     if (ctrl && !input.shift && !input.alt && lower === 's') {
       void this.openSettings();
+      return true;
+    }
+    if (ctrl && !input.shift && !input.alt && lower === 'f' && (this.owns(wc) || this.isSite(wc))) {
+      this.win.webContents.focus();
+      this.win.webContents.send(CH.findOpen);
       return true;
     }
     if (ctrl && !input.shift && !input.alt && lower === 'l' && isSiteId(this.active)) {
@@ -715,6 +900,12 @@ export class MainWindow {
     }
     if (ctrl && key === '0') {
       target.setZoomLevel(0);
+      return true;
+    }
+    if (key === 'F12' && input.shift && !app.isPackaged) {
+      const wc = this.overlay.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools({ mode: 'detach' });
       return true;
     }
     if (key === 'F12' && !app.isPackaged) {
@@ -909,13 +1100,21 @@ export class MainWindow {
 
   private expect(name: Signal, timeout: number): Promise<void> {
     return new Promise((resolve) => {
-      const timer = setTimeout(finish, timeout);
+      let timer = setTimeout(finish, timeout);
       function finish() {
         clearTimeout(timer);
         resolve();
       }
       this.signals.set(name, finish);
+      this.rearms.set(name, (ms) => {
+        clearTimeout(timer);
+        timer = setTimeout(finish, ms);
+      });
     });
+  }
+
+  private rearm(name: Signal, timeout: number): void {
+    this.rearms.get(name)?.(timeout);
   }
 
   private resolve(name: Signal): void {

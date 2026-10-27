@@ -1195,3 +1195,12 @@ video.viewer-media {
   padding: 0 16px;
   border-radius: var(--r-btn);
 }
+
+.round.danger {
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 18%, rgb(0 0 0 / 0.55));
+}
+
+.round.danger:hover {
+  background: color-mix(in oklab, var(--danger) 32%, rgb(0 0 0 / 0.55));
+}

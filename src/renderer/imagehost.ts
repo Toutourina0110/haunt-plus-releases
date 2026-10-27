@@ -12,6 +12,7 @@ import {
 import type {
   ImageError,
   ImageFolder,
+  ImageDeleteResult,
   ImageFoldersResult,
   ImageItem,
   ImageListResult,
@@ -60,6 +61,7 @@ const SHORTCUT_ROWS: Array<[ShortcutKey, StringKey]> = [
   ['shortcutClipboard', 'scUploadClipboard'],
   ['shortcutRecordArea', 'scRecordArea'],
   ['shortcutRecordScreen', 'scRecordScreen'],
+  ['shortcutReplay', 'scReplay'],
 ];
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -376,6 +378,7 @@ function fileCard(item: ImageItem, index = 0, list: ImageItem[] = [item]): HTMLL
   }
   if (open) actions.append(iconButton('round', tr('ihOpen'), 'external', () => desk.send(CH.imagehostOpen, open)));
   if (item.type === 'image' && item.rawUrl) actions.append(iconButton('round', tr('ihAnnotate'), 'pen', () => annotate(item)));
+  actions.append(iconButton('round danger', tr('ihDelete'), 'trash', () => void removeFile(item)));
   thumb.append(actions);
 
   const name = h('p', { class: 'file-name', title: item.originalName }, item.originalName, h('span', {}, ` (${formatSize(item.size)})`));
@@ -582,6 +585,23 @@ function captureTile(title: StringKey, sub: StringKey, iconName: IconName, short
   );
 }
 
+function replayTile(): HTMLElement {
+  const save = button('btn soft', tr('ihReplayBtn'), () => desk.send(CH.imagehostCapture, 'replay-save'), 'video');
+  save.disabled = !settings.replayEnabled;
+  const toggle = switchControl(tr('replayOn'), settings.replayEnabled, (on) => {
+    setSetting({ replayEnabled: on });
+    save.disabled = !on;
+  });
+  return h(
+    'div',
+    { class: 'card tile' },
+    h('div', { class: 'tile-top' }, h('h2', { class: 'card-title' }, tr('ihReplay')), toggle),
+    h('p', { class: 'card-sub' }, tr('ihReplaySub', { n: settings.replaySeconds })),
+    keys(...shortcutLabels(settings.shortcutReplay, lang())),
+    save,
+  );
+}
+
 function showCapture(): void {
   content.append(pageHead('ihNavCapture', 'ihCaptureSub'));
   if (!hasKey) content.append(noKey(), h('div', { class: 'section-head' }));
@@ -606,6 +626,7 @@ function showCapture(): void {
       { class: 'tiles' },
       captureTile('ihRecordArea', 'ihRecordAreaSub', 'video', 'shortcutRecordArea', 'ihRecordAreaBtn', 'record-area'),
       captureTile('ihRecordScreen', 'ihRecordScreenSub', 'screen', 'shortcutRecordScreen', 'ihRecordScreenBtn', 'record-screen'),
+      replayTile(),
       h(
         'div',
         { class: 'card tile' },
@@ -727,6 +748,7 @@ function showSettings(): void {
           h('p', { class: 'hint spaced' }, tr('ihShortcutTabHint')),
         ),
         videoCard(),
+        replayCard(),
       ),
       thanksCard(),
     ),
@@ -788,6 +810,32 @@ function videoCard(): HTMLElement {
       h('div', {}, h('div', { class: 'label' }, tr('recFolder')), folder),
       button('btn soft', tr('recFolderChange'), () => desk.send(CH.imagehostCapture, 'video-folder'), 'folder'),
     ),
+  );
+}
+
+function replayCard(): HTMLElement {
+  const durations: Array<[string, string]> = [['15', '15 s'], ['30', '30 s'], ['60', '1 min'], ['120', '2 min']];
+  return h(
+    'section',
+    { class: 'card pad' },
+    h('h2', { class: 'card-title' }, tr('replaySettings')),
+    h('p', { class: 'hint' }, tr('replayIntro')),
+    h('div', { class: 'row spaced' }, textBlock('replayOn', 'replayOnHint'), switchControl(tr('replayOn'), settings.replayEnabled, (on) => setSetting({ replayEnabled: on }))),
+    h(
+      'div',
+      { class: 'seg-row spaced' },
+      textBlock('replayMode', 'replayModeHint'),
+      segmented(tr('replayMode'), [['screen', tr('replayModeScreen')], ['audio', tr('replayModeAudio')]], settings.replayMode, (v) =>
+        setSetting({ replayMode: v === 'audio' ? 'audio' : 'screen' }),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'seg-row spaced' },
+      textBlock('replaySeconds'),
+      segmented(tr('replaySeconds'), durations, String(settings.replaySeconds), (v) => setSetting({ replaySeconds: Number(v) as 15 | 30 | 60 | 120 })),
+    ),
+    h('div', { class: 'row' }, textBlock('replayMic', 'replayMicHint'), switchControl(tr('replayMic'), settings.replayMic, (on) => setSetting({ replayMic: on }))),
   );
 }
 
@@ -893,6 +941,22 @@ function tryShortcut(acc: string | null): void {
   stopRecording();
 }
 
+async function removeFile(item: ImageItem): Promise<void> {
+  const res = await desk.invoke<ImageDeleteResult | null>(CH.imagehostDelete, { id: item.id, name: item.originalName });
+  if (!res?.ok) {
+    if (res && 'error' in res && res.error) toast(tr(IMAGE_ERRORS[res.error]), true);
+    return;
+  }
+  toast(tr('ihDeleted'));
+  if (!viewer) return;
+  const at = viewer.list.findIndex((i) => i.id === item.id);
+  if (at < 0) return;
+  viewer.list.splice(at, 1);
+  if (!viewer.list.length) return closeViewer();
+  viewer.index = Math.min(viewer.index, viewer.list.length - 1);
+  drawViewer();
+}
+
 function openViewer(list: ImageItem[], index: number): void {
   if (!list[index]) return;
   closeViewer();
@@ -958,6 +1022,7 @@ function drawViewer(): void {
         : null,
       item.type === 'image' && item.rawUrl ? button('btn soft', tr('ihAnnotate'), () => annotate(item), 'pen') : null,
       open ? iconButton('btn soft icon', tr('ihOpen'), 'external', () => desk.send(CH.imagehostOpen, open)) : null,
+      iconButton('btn soft icon danger', tr('ihDelete'), 'trash', () => void removeFile(item)),
       close,
     ),
   );
@@ -1035,12 +1100,14 @@ async function startPageTour(): Promise<void> {
 }
 
 function wireFirstVisit(): void {
-  document.addEventListener('visibilitychange', () => {
+  const maybe = () => {
     if (document.visibilityState !== 'visible' || settings.tourImagesSeen) return;
     window.setTimeout(() => {
       if (document.visibilityState === 'visible' && !settings.tourImagesSeen && !tourActive()) void startPageTour();
     }, 1800);
-  });
+  };
+  document.addEventListener('visibilitychange', maybe);
+  maybe();
 }
 
 function keyChanged(next: boolean): void {
@@ -1054,7 +1121,10 @@ function keyChanged(next: boolean): void {
 
 function wireDrop(): void {
   let depth = 0;
-  const hasFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes('Files');
+  let fromPage = false;
+  window.addEventListener('dragstart', () => (fromPage = true));
+  window.addEventListener('dragend', () => (fromPage = false));
+  const hasFiles = (event: DragEvent) => !fromPage && !!event.dataTransfer?.types.includes('Files');
   window.addEventListener('dragenter', (event) => {
     if (!hasFiles(event)) return;
     event.preventDefault();
@@ -1075,6 +1145,7 @@ function wireDrop(): void {
     event.preventDefault();
     depth = 0;
     veil.hidden = true;
+    if (!hasFiles(event)) return;
     void upload([...(event.dataTransfer?.files ?? [])]);
   });
 }

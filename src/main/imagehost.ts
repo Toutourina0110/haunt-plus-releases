@@ -1,10 +1,11 @@
-import { app, clipboard, ClipboardItem, nativeImage, net, Notification, safeStorage, shell, type NativeImage } from 'electron';
+import { app, clipboard, ClipboardItem, dialog, nativeImage, net, Notification, safeStorage, shell, type BrowserWindow, type NativeImage } from 'electron';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { IMAGE_ERRORS, t } from '../shared/i18n';
 import type {
   CaptureAction,
+  ImageDeleteResult,
   ImageError,
   ImageFolder,
   ImageFoldersResult,
@@ -172,6 +173,34 @@ export class ImageHost {
     } catch (err) {
       return { ok: false, error: codeOf(err) };
     }
+  }
+
+  async deleteUpload(raw: unknown, parent: BrowserWindow | null): Promise<ImageDeleteResult> {
+    const item = raw as { id?: unknown; name?: unknown } | null;
+    const id = typeof item?.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(item.id) ? item.id : null;
+    if (!id) return { ok: false, error: 'NOT_FOUND' };
+    const name = typeof item?.name === 'string' && item.name ? item.name.slice(0, 120) : id;
+    const l = this.deps.locale();
+    const options: Electron.MessageBoxOptions = {
+      type: 'warning',
+      buttons: [t(l, 'ihDelete'), t(l, 'capCancel')],
+      defaultId: 1,
+      cancelId: 1,
+      noLink: true,
+      title: 'haunt+',
+      message: t(l, 'ihDeleteConfirm', { name }),
+      detail: t(l, 'ihDeleteDetail'),
+    };
+    const { response } = parent && !parent.isDestroyed() ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+    if (response !== 0) return { ok: false };
+    try {
+      await this.request(`/uploads/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (err) {
+      const code = codeOf(err);
+      return { ok: false, error: code === 'UNAUTHORIZED' ? 'NO_DELETE' : code };
+    }
+    this.deps.onUploaded();
+    return { ok: true };
   }
 
   async uploadFiles(raw: unknown): Promise<UploadOutcome[]> {

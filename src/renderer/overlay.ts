@@ -3,19 +3,24 @@ import { palette } from '../shared/palette';
 import { LANGUAGE_NAMES, LOCALES, type StringKey } from '../shared/i18n';
 import { keyLabel } from '../shared/shortcuts';
 import { DEFAULT_PARAMS } from '../shared/tile-params';
-import type {
-  LogoFile,
-  MenuAction,
-  PageShot,
-  Settings,
-  SettingsOpenPayload,
-  SettingsPatch,
-  TabId,
-  TourStartPayload,
-  TransitionPayload,
-  UiInit,
-  UpdateNoticePayload,
-  UpdateStatus,
+import {
+  isGlMode,
+  isStageMode,
+  type AnimationMode,
+  type LogoFile,
+  type MenuAction,
+  type PageShot,
+  type Settings,
+  type SettingsOpenPayload,
+  type SettingsPatch,
+  type TabId,
+  type TourStartPayload,
+  type TransitionChainPayload,
+  type TransitionPayload,
+  type TransitionPlayPayload,
+  type UiInit,
+  type UpdateNoticePayload,
+  type UpdateStatus,
 } from '../shared/types';
 import {
   applyFont,
@@ -31,11 +36,38 @@ import {
   tourLabels,
   tr,
 } from './common';
-import { loadMark, TileMorph, type Mark, type Shot } from './tiles';
+import { GlEngine } from './motion/gl/engine';
+import { scenes, warm } from './motion/gl';
+import { GlMorph } from './motion/gl/morph';
+import { executionCues, prepareExecution } from './motion/execution';
+import { EXECUTION } from './motion/execution-params';
+import { ExecutionSfx } from './motion/execution-sfx';
+import { Preview, type PreviewEnv } from './motion/preview';
+import { Stage, type Leg, type Picture } from './motion/stage';
+import { decodeShot, loadMark, sampleCells, TileMorph, type Mark, type Shot } from './tiles';
+import { DUST } from '../shared/dust-params';
 import { rectOf, refreshTour, runTour, tourActive, type TourStep } from './tour';
 
 const splash = document.getElementById('splash')!;
 const fx = document.getElementById('fx') as HTMLCanvasElement;
+const glCanvas = document.getElementById('gl') as HTMLCanvasElement;
+let glEngine: GlEngine | null | undefined;
+function gl(): GlEngine | null {
+  if (glEngine === undefined) {
+    glEngine = GlEngine.create(glCanvas);
+    if (glEngine) warm(glEngine);
+  }
+  return glEngine?.ok ? glEngine : null;
+}
+
+function prepareGl(): void {
+  requestIdleCallback(() => void marks.then((all) => all && prepareExecution(all)));
+  if (!settings || !isGlMode(settings.animations)) return;
+  requestIdleCallback(() => {
+    gl();
+    void marks.then((all) => all && Object.values(all).forEach((mark) => sampleCells(mark, DUST.dark.logoCells)));
+  });
+}
 const menu = document.getElementById('menu')!;
 const settingsEl = document.getElementById('settings')!;
 const backdrop = document.getElementById('settings-backdrop')!;
@@ -53,8 +85,18 @@ let noticeGo = false;
 let menuAnim: Animation | null = null;
 let marks: Promise<Record<TabId, Mark> | null> = Promise.resolve(null);
 
-let current: { aborted: boolean; stop: () => void } | null = null;
+type OverlayRun = { aborted: boolean; stop: () => void; site: TabId };
+let current: OverlayRun | null = null;
 let onTarget: ((shot: Shot | null) => void) | null = null;
+
+const cache = new Map<TabId, Picture>();
+const stage = new Stage(document.getElementById('stage')!, {
+  dark: () => dark,
+  colors: (tab) => {
+    const p = palette(tab, dark);
+    return { stage: p.raised, surface: p.surface };
+  },
+});
 
 const OUT_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
@@ -74,10 +116,16 @@ function loadMarks(files: Record<TabId, LogoFile> | undefined): void {
     });
 }
 
-async function toShot(shot: PageShot | null): Promise<Shot | null> {
-  if (!shot) return null;
-  const bitmap = await createImageBitmap(new Blob([shot.jpeg as BlobPart], { type: 'image/jpeg' })).catch(() => null);
-  return { bitmap, boxes: shot.boxes };
+async function take(tab: TabId, shot: PageShot | null): Promise<Picture | null> {
+  const decoded = await decodeShot(shot);
+  if (!decoded) return null;
+  const pic: Picture = { ...decoded, cards: shot?.cards ?? [] };
+  if (pic.bitmap) {
+    const old = cache.get(tab);
+    cache.set(tab, pic);
+    if (old && old !== pic) old.bitmap?.close();
+  }
+  return pic;
 }
 
 function abortTransition(): void {
@@ -89,47 +137,93 @@ function abortTransition(): void {
 async function runTransition(payload: TransitionPayload): Promise<void> {
   menu.hidden = true;
   if (payload.kind === 'switch' && settingsOpen) void closeSettings(false);
-  const run = { aborted: false, stop: () => {} };
+  const run: OverlayRun = { aborted: false, stop: () => {}, site: payload.toSite };
   current = run;
-  const shots: Shot[] = [];
-  const keep = (shot: Shot | null) => {
-    if (shot) shots.push(shot);
-    return shot;
-  };
 
   try {
     const all = await marks;
-    const full = !prefersReducedMotion() && payload.mode === 'full' && !!all;
+    const glMode = isGlMode(payload.mode);
+    const full = !prefersReducedMotion() && (payload.mode === 'full' || glMode) && !!all;
     if (payload.kind === 'intro') {
       if (!payload.to) return;
-      if (full) await tiles(payload, run, all!, keep);
+      if (full) await tiles(payload, run, all!);
       else await fadeSplash(run);
+    } else if (full && glMode && gl()) {
+      await glSwitch(payload, run, all!);
     } else if (full) {
-      await tiles(payload, run, all!, keep);
+      await tiles(payload, run, all!);
+    } else if (isStageMode(payload.mode) && !prefersReducedMotion()) {
+      await stageSwitch(payload, run);
     } else {
-      await fadeOut(payload, run, keep);
+      await fadeOut(payload, run);
     }
   } finally {
     onTarget = null;
     current = null;
-    for (const shot of shots) shot.bitmap?.close();
     fx.getContext('2d')?.clearRect(0, 0, fx.width, fx.height);
     fx.hidden = true;
+    glCanvas.hidden = true;
+    glCanvas.getAnimations().forEach((a) => a.cancel());
     fx.getAnimations().forEach((a) => a.cancel());
     splash.hidden = true;
-    setSite(payload.toSite);
+    setSite(run.site);
     desk.send(CH.overlayDone);
   }
 }
 
+async function glSwitch(payload: TransitionPayload, run: OverlayRun, all: Record<TabId, Mark>): Promise<void> {
+  const engine = gl();
+  if (!engine || !isGlMode(payload.mode)) return;
+  const fromSite = payload.fromSite ?? payload.toSite;
+  const from = await take(fromSite, payload.from);
+  const execution = payload.mode === 'execution';
+  if (execution) await prepareExecution(all);
+  const p = dark ? EXECUTION.dark : EXECUTION.light;
+  const volume = settings?.executionSound ? (settings.executionVolume ?? 60) / 100 : 0;
+  const sound = execution && volume > 0 ? new ExecutionSfx(executionCues(p, payload.toSite), volume) : null;
+  const morph = new GlMorph({
+    onTick: sound ? (t) => sound.tick(t * p.end) : undefined,
+    engine,
+    scene: scenes[payload.mode],
+    mode: payload.mode,
+    w: window.innerWidth,
+    h: window.innerHeight,
+    dpr: window.devicePixelRatio || 1,
+    dark,
+    duration: payload.duration,
+    from: { site: fromSite, mark: all[fromSite], shot: from },
+    to: { site: payload.toSite, mark: all[payload.toSite] },
+    origin: payload.origin,
+  });
+  console.debug(`${payload.mode}: ready in ${morph.prepMs.toFixed(1)} ms`);
+  glCanvas.hidden = false;
+  run.stop = execution
+    ? () => {
+        sound?.fade(120);
+        const fade = glCanvas.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out', fill: 'forwards' });
+        void fade.finished.then(
+          () => morph.abort(),
+          () => morph.abort(),
+        );
+      }
+    : () => morph.abort();
+  morph.drawStart();
+  await paintSettled();
+  splash.hidden = true;
+  onTarget = (shot) => morph.setTarget(shot);
+  desk.send(CH.overlayCovered);
+  if (run.aborted) run.stop();
+  const stats = await morph.play();
+  if (!stats.aborted) sound?.finish();
+}
+
 async function tiles(
   payload: TransitionPayload,
-  run: { aborted: boolean; stop: () => void },
+  run: OverlayRun,
   all: Record<TabId, Mark>,
-  keep: (shot: Shot | null) => Shot | null,
 ): Promise<void> {
   const fromSite = payload.fromSite ?? payload.toSite;
-  const from = keep(await toShot(payload.from));
+  const from = await take(fromSite, payload.from);
   fx.hidden = false;
   const morph = new TileMorph({
     kind: payload.kind,
@@ -144,19 +238,18 @@ async function tiles(
   morph.drawStart();
   await paintSettled();
   splash.hidden = true;
-  onTarget = (shot) => morph.setTarget(keep(shot));
+  onTarget = (shot) => morph.setTarget(shot);
   desk.send(CH.overlayCovered);
-  if (payload.kind === 'intro') morph.setTarget(keep(await toShot(payload.to)));
+  if (payload.kind === 'intro') morph.setTarget(await take(payload.toSite, payload.to));
   if (run.aborted) morph.abort();
   await morph.play();
 }
 
 async function fadeOut(
   payload: TransitionPayload,
-  run: { aborted: boolean; stop: () => void },
-  keep: (shot: Shot | null) => Shot | null,
+  run: OverlayRun,
 ): Promise<void> {
-  const from = keep(await toShot(payload.from));
+  const from = await take(payload.fromSite ?? payload.toSite, payload.from);
   const dpr = window.devicePixelRatio || 1;
   fx.width = Math.round(fx.clientWidth * dpr) || Math.round(window.innerWidth * dpr);
   fx.height = Math.round(fx.clientHeight * dpr) || Math.round(window.innerHeight * dpr);
@@ -180,7 +273,24 @@ async function fadeOut(
   await anim.finished.catch(() => {});
 }
 
-async function fadeSplash(run: { aborted: boolean; stop: () => void }): Promise<void> {
+async function stageSwitch(payload: TransitionPayload, run: OverlayRun): Promise<void> {
+  const from = await take(payload.fromSite ?? payload.toSite, payload.from);
+  if (run.aborted || !isStageMode(payload.mode)) return;
+  const leg: Leg = {
+    mode: payload.mode,
+    speed: payload.speed,
+    fromSite: payload.fromSite ?? payload.toSite,
+    toSite: payload.toSite,
+    origin: payload.origin,
+  };
+  const played = stage.play(leg, from, cache.get(payload.toSite) ?? null);
+  run.stop = () => stage.stop();
+  await paintSettled();
+  desk.send(CH.overlayCovered);
+  await played;
+}
+
+async function fadeSplash(run: OverlayRun): Promise<void> {
   const anim = splash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, easing: 'ease-out', fill: 'forwards' });
   run.stop = () => anim.finish();
   await anim.finished.catch(() => {});
@@ -317,7 +427,7 @@ function group(title: StringKey, ...children: HTMLElement[]): HTMLElement {
   return section;
 }
 
-type BoolKey = 'openAtLogin' | 'closeToTray' | 'hauntPlus' | 'globalShortcut';
+type BoolKey = 'openAtLogin' | 'closeToTray' | 'hauntPlus' | 'globalShortcut' | 'executionSound';
 
 function toggleRow(key: BoolKey, label: StringKey, hint?: StringKey): HTMLElement {
   const row = document.createElement('div');
@@ -339,7 +449,7 @@ function toggleRow(key: BoolKey, label: StringKey, hint?: StringKey): HTMLElemen
   return row;
 }
 
-type ChoiceKey = 'startPage' | 'animations' | 'externalLinks' | 'transitionSpeed';
+type ChoiceKey = 'startPage' | 'externalLinks' | 'transitionSpeed';
 
 function choice(key: ChoiceKey, label: StringKey, options: Array<[string, string]>): HTMLElement {
   const seg = document.createElement('div');
@@ -366,6 +476,212 @@ function choice(key: ChoiceKey, label: StringKey, options: Array<[string, string
     seg.append(opt);
   });
   return seg;
+}
+
+const PICK_GROUPS: Array<[StringKey, Array<[AnimationMode, StringKey, StringKey]>]> = [
+  [
+    'animGroupPlain',
+    [
+      ['off', 'animOff', 'animOffHint'],
+      ['simple', 'animSimple', 'animSimpleHint'],
+    ],
+  ],
+  [
+    'animGroupSmooth',
+    [
+      ['travelling', 'animTravelling', 'animTravellingHint'],
+      ['wave', 'animWave', 'animWaveHint'],
+      ['portal', 'animPortal', 'animPortalHint'],
+    ],
+  ],
+  [
+    'animGroupShow',
+    [
+      ['prism', 'animPrism', 'animPrismHint'],
+      ['full', 'animFull', 'animFullHint'],
+      ['fracture', 'animFracture', 'animFractureHint'],
+      ['dust', 'animDust', 'animDustHint'],
+    ],
+  ],
+  ['animGroupCinema', [['execution', 'animExecution', 'animExecutionHint']]],
+];
+
+let previewGl: GlEngine | null | undefined;
+const previewEnv: PreviewEnv = {
+  dark: () => dark,
+  speed: () => settings?.transitionSpeed ?? 'medium',
+  marks: () => marks,
+  reduced: prefersReducedMotion,
+  gl: () => {
+    if (previewGl === undefined) {
+      previewGl = GlEngine.create(new OffscreenCanvas(1, 1));
+      if (previewGl) warm(previewGl);
+    }
+    return previewGl?.ok ? previewGl : null;
+  },
+};
+
+let picks: Array<{ mode: AnimationMode; opt: HTMLElement; preview: Preview }> = [];
+let summary: { button: HTMLButtonElement; stage: HTMLElement; name: HTMLElement; desc: HTMLElement; mode: AnimationMode | null; preview: Preview | null } | null = null;
+
+function pickInfo(mode: AnimationMode): [StringKey, StringKey] | null {
+  for (const [, options] of PICK_GROUPS) for (const [m, name, hint] of options) if (m === mode) return [name, hint];
+  return null;
+}
+
+function updateSummary(): void {
+  if (!summary || !settings) return;
+  const mode = settings.animations;
+  const info = pickInfo(mode);
+  if (info) {
+    summary.name.textContent = tr(info[0]);
+    summary.desc.textContent = tr(info[1]);
+  }
+  if (summary.mode === mode) return;
+  summary.preview?.loop(false);
+  const preview = new Preview(mode, previewEnv);
+  summary.stage.replaceChildren(preview.el);
+  summary.preview = preview;
+  summary.mode = mode;
+}
+
+function transitionPicker(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'tp-wrap';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tp-current';
+  button.setAttribute('aria-expanded', 'false');
+  button.setAttribute('aria-controls', 'tp-list');
+  const stage = document.createElement('span');
+  stage.className = 'tp-current-stage';
+  const text = document.createElement('span');
+  text.className = 'tp-current-text';
+  const name = document.createElement('span');
+  name.className = 'tp-name';
+  const desc = document.createElement('span');
+  desc.className = 'tp-desc';
+  text.append(name, desc);
+  const chevron = document.createElement('span');
+  chevron.className = 'tp-chevron';
+  chevron.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 7.5 10 12.5l5-5"/></svg>';
+  button.append(stage, text, chevron);
+  summary = { button, stage, name, desc, mode: null, preview: null };
+  button.addEventListener('pointerenter', () => summary?.preview?.loop(true));
+  button.addEventListener('pointerleave', () => summary?.preview?.loop(false));
+
+  const group = document.createElement('div');
+  group.className = 'tp';
+  group.id = 'tp-list';
+  group.hidden = true;
+  const setOpen = (open: boolean) => {
+    group.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.title = tr(open ? 'animCollapse' : 'animExpand');
+    if (open) group.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  };
+  setOpen(false);
+  button.addEventListener('click', () => setOpen(group.hidden));
+  wrap.append(button, group);
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', tr('tabTransition'));
+  picks = [];
+  PICK_GROUPS.forEach(([label, options], g) => {
+    const set = document.createElement('div');
+    set.className = 'tp-group';
+    set.setAttribute('role', 'group');
+    const title = document.createElement('span');
+    title.className = 'tp-group-title';
+    title.id = `tp-group-${g}`;
+    title.textContent = tr(label);
+    set.setAttribute('aria-labelledby', title.id);
+    set.append(title);
+    group.append(set);
+    for (const [mode, name, hint] of options) picks.push(pickOption(set, mode, name, hint));
+    if (label === 'animGroupCinema') set.append(executionSound());
+  });
+  group.addEventListener('keydown', (event) => {
+    const at = picks.findIndex((p) => p.opt === document.activeElement);
+    if (at < 0) return;
+    const last = picks.length - 1;
+    const moves: Record<string, number> = {
+      ArrowRight: at === last ? 0 : at + 1,
+      ArrowDown: at === last ? 0 : at + 1,
+      ArrowLeft: at === 0 ? last : at - 1,
+      ArrowUp: at === 0 ? last : at - 1,
+      Home: 0,
+      End: last,
+      ' ': at,
+      Enter: at,
+    };
+    const next = moves[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    picks[next].opt.focus();
+    pickTransition(picks[next].mode);
+  });
+  updateSummary();
+  return wrap;
+}
+
+function pickOption(set: HTMLElement, mode: AnimationMode, name: StringKey, hint: StringKey): (typeof picks)[number] {
+  const preview = new Preview(mode, previewEnv);
+  const opt = document.createElement('div');
+  opt.className = 'tp-opt';
+  opt.setAttribute('role', 'radio');
+  opt.dataset.value = mode;
+  const title = document.createElement('span');
+  title.className = 'tp-name';
+  title.textContent = tr(name);
+  opt.title = tr(hint);
+  opt.append(preview.el, title);
+  opt.addEventListener('pointerenter', () => preview.loop(true));
+  opt.addEventListener('pointerleave', () => preview.loop(document.activeElement === opt));
+  opt.addEventListener('focus', () => preview.loop(true));
+  opt.addEventListener('blur', () => preview.loop(opt.matches(':hover')));
+  opt.addEventListener('click', () => pickTransition(mode));
+  set.append(opt);
+  return { mode, opt, preview };
+}
+
+function executionSound(): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'tp-extra';
+  const row = document.createElement('label');
+  row.className = 'sp-row tp-volume';
+  const name = document.createElement('span');
+  name.className = 'sp-label';
+  name.textContent = tr('executionVolume');
+  const out = document.createElement('output');
+  out.id = 'execution-volume-at';
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.id = 'execution-volume';
+  input.min = '0';
+  input.max = '100';
+  input.step = '5';
+  input.addEventListener('input', () => {
+    out.textContent = `${input.value} %`;
+    change({ executionVolume: Number(input.value) });
+  });
+  row.append(name, out, input);
+  box.append(toggleRow('executionSound', 'executionSound'), row);
+  return box;
+}
+
+function pickTransition(mode: AnimationMode): void {
+  if (settings?.animations !== mode) change({ animations: mode });
+  syncPicker();
+  picks.find((p) => p.mode === mode)?.preview.play();
+}
+
+function syncPicker(): void {
+  for (const { mode, opt } of picks) {
+    const on = settings?.animations === mode;
+    opt.setAttribute('aria-checked', String(on));
+    opt.tabIndex = on ? 0 : -1;
+  }
+  updateSummary();
 }
 
 function selectChoice(seg: HTMLElement, value: string): void {
@@ -450,11 +766,8 @@ function buildSettings(): void {
     ),
     group(
       'animations',
-      choice('animations', 'animations', [
-        ['full', tr('animFull')],
-        ['simple', tr('animSimple')],
-        ['off', tr('animOff')],
-      ]),
+      textBlock('tabTransition'),
+      transitionPicker(),
       labelRow('transitionSpeed', 'transitionSpeedHint'),
       choice('transitionSpeed', 'transitionSpeed', [
         ['fast', tr('speedFast')],
@@ -678,9 +991,15 @@ function renderSettings(): void {
     const key = seg.dataset.key as ChoiceKey;
     selectChoice(seg, settings[key]);
   }
+  syncPicker();
+  const volume = document.getElementById('execution-volume') as HTMLInputElement | null;
+  if (volume && document.activeElement !== volume) volume.value = String(settings.executionVolume);
+  const volumeAt = document.getElementById('execution-volume-at');
+  if (volumeAt) volumeAt.textContent = `${settings.executionVolume} %`;
+  if (volume) volume.disabled = !settings.executionSound;
   const speed = panel.querySelector<HTMLElement>('.seg[data-key="transitionSpeed"]');
   if (speed) {
-    const off = settings.animations !== 'full';
+    const off = settings.animations === 'simple' || settings.animations === 'off';
     speed.setAttribute('aria-disabled', String(off));
     speed.querySelectorAll('button').forEach((b) => (b.disabled = off));
   }
@@ -755,13 +1074,17 @@ async function main(): Promise<void> {
   buildSettings();
 
   desk.on<TransitionPayload>(CH.transition, (payload) => void runTransition(payload));
-  desk.on<{ to: PageShot | null }>(CH.transitionPlay, async (data) => {
-    const take = onTarget;
-    if (!take) return;
-    const shot = await toShot(data?.to ?? null);
-    if (onTarget === take) take(shot);
-    else shot?.bitmap?.close();
+  desk.on<TransitionPlayPayload>(CH.transitionPlay, async (data) => {
+    const wanted = onTarget;
+    const fresh = await take(data.tab, data.to);
+    if (stage.refresh(data.tab, fresh)) return;
+    if (wanted && onTarget === wanted) wanted((fresh?.bitmap ? fresh : cache.get(data.tab)) ?? null);
   });
+  desk.on<TransitionChainPayload>(CH.transitionChain, (leg) => {
+    if (current && stage.chain(leg, cache.get(leg.toSite) ?? null)) current.site = leg.toSite;
+    void paintSettled().then(() => desk.send(CH.overlayCovered));
+  });
+  desk.on<TransitionPlayPayload>(CH.shotCache, (data) => void take(data.tab, data.to));
   desk.on(CH.transitionAbort, abortTransition);
   for (const type of ['pointerdown', 'keydown'] as const) window.addEventListener(type, abortTransition);
   desk.on<{ active: TabId; hauntPlus: boolean }>(CH.menuShow, showMenu);
@@ -776,7 +1099,9 @@ async function main(): Promise<void> {
   desk.on<Settings>(CH.settingsChanged, (next) => {
     settings = next;
     renderSettings();
+    prepareGl();
   });
+  prepareGl();
   desk.on<UpdateStatus>(CH.updateStatus, (next) => {
     update = next;
     renderUpdate();
@@ -798,6 +1123,7 @@ async function main(): Promise<void> {
   desk.on<{ dark: boolean }>(CH.theme, (theme) => {
     dark = theme.dark;
     applyPalette(site, dark);
+    for (const pick of picks) pick.preview.repaint();
   });
 
   document.addEventListener('keydown', (event) => {
@@ -805,7 +1131,7 @@ async function main(): Promise<void> {
     else if (event.key === 'Escape' && noticeOpen && !noticeGo) closeNotice();
   });
 
-  await paintSettled();
+  if (!document.hidden) await paintSettled();
   desk.send(CH.overlayReady);
 }
 
