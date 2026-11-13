@@ -26,7 +26,7 @@ Everything the installer runs is in this repository, so you can check that the a
 ## What the app connects to
 
 - **haunt.gg**, shown as a normal website in its own window. You sign in on haunt.gg's own page. The app never reads your cookies or your password.
-- **app.haunt-tools.site**, the haunt tools website, shown in the same way.
+- **haunt-tools.site**, the haunt tools website, shown in the same way.
 - **haunt.gg/api/imagehost**, only if you add an Image Host API key. The key is encrypted on your PC with Windows DPAPI and is only ever sent to haunt.gg (`src/main/imagehost.ts`).
 - **GitHub**, to check this page for updates (`src/main/updater.ts`).
 - **Fontshare**, for the fonts of the app's own pages.
